@@ -1,4 +1,4 @@
-# from typing import Callable, Iterator, Union, Optional, List
+# -*- coding: utf-8 -*-
 from typing import List
 import xarray as xr
 import numpy as np
