@@ -131,4 +131,9 @@ dmypy.json
 
 # Mac
 .DS_Store
+
+# VS Code
 *.json
+
+# MEG data
+*.fif
