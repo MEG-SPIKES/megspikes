@@ -1,11 +1,36 @@
 # -*- coding: utf-8 -*-
-from typing import Union, List
+from typing import Union, List, Tuple
 from pathlib import Path
 import mne
 import numpy as np
 from scipy import signal
 from scipy.misc import electrocardiogram
 from scipy.ndimage.filters import gaussian_filter
+import xarray as xr
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+class PrepareData(BaseEstimator, TransformerMixin):
+    def __init__(self,
+                 data_file: Union[str, Path],
+                 sensors: Union[str, int],
+                 filtering: Union[None, List[float]] = [2, 90, 50],
+                 resample: Union[None, float] = None,
+                 alpha_notch: Union[None, float] = None) -> None:
+        self.data_file = data_file
+        self.sensors = sensors
+        self.filtering = filtering
+        self.resample = resample
+        self.alpha_notch = alpha_notch
+
+    def fit(self, X: xr.Dataset, y=None):
+        return self
+
+    def transform(self, X: xr.Dataset) -> Tuple[xr.Dataset, mne.io.Raw]:
+        data = prepare_data(
+            self.data_file, self.sensors, self.filtering, self.resample,
+            self.alpha_notch)
+        return (X, data)
 
 
 def prepare_data(data_file: Union[str, Path], sensors: Union[str, int],

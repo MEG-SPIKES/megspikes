@@ -1,25 +1,20 @@
 # -*- coding: utf-8 -*-
-from megspikes.detection.detection import (
-    DecompositionICA)
-from megspikes.database.database import Database
-from megspikes.utils import prepare_data, simulate_raw
-from sklearn.pipeline import make_pipeline
 import numpy as np
-from scipy.signal import find_peaks
 import pytest
+from megspikes.database.database import Database
+from megspikes.detection.detection import DecompositionICA
+from megspikes.utils import PrepareData, simulate_raw
+from scipy.signal import find_peaks
+from sklearn.pipeline import make_pipeline
 
-pytest
-raw = ''
-cardio_ts = 0
 
-
-@pytest.fixture(name="fif_data")
+@pytest.fixture(name="file_sensors")
 def fixture_data():
     raw_fif, _ = simulate_raw(10, 1000)
     fname = 'raw_test.fif'
     raw_fif.save(fname=fname, overwrite=True)
-    return [prepare_data(fname, 'grad'),
-            prepare_data(fname, 'mag')]
+    return [[fname, 'grad'],
+            [fname, 'mag']]
 
 
 @pytest.fixture(name="dataset")
@@ -34,16 +29,20 @@ def fixture_dataset():
 
 
 @pytest.mark.happy
-def test_ica_decomposition(fif_data, dataset):
-    for data, ds in zip(fif_data, dataset):
+def test_ica_decomposition(file_sensors, dataset):
+    for (file, sensors), ds in zip(file_sensors, dataset):
+        pd = PrepareData(file, sensors)
         decomposition = DecompositionICA(n_components=20)
-        decomposition.fit(ds, data)
+        (ds, data) = pd.transform(ds)
+        decomposition.fit((ds, data))
         _ = decomposition.transform(ds)
 
 
 @pytest.mark.pipeline
 @pytest.mark.happy
-def test_pipeline(fif_data, dataset):
-    for data, ds in zip(fif_data, dataset):
-        pipe = make_pipeline(DecompositionICA(n_components=20))
-        _ = pipe.fit_transform(ds, data)
+def test_pipeline(file_sensors, dataset):
+    for (file, sensors), ds in zip(file_sensors, dataset):
+        pipe = make_pipeline(
+            PrepareData(file, sensors),
+            DecompositionICA(n_components=20))
+        _ = pipe.fit_transform(ds)

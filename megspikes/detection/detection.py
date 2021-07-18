@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-# from typing import Union
-# from pathlib import Path
+from typing import Union, List, Tuple
 import numpy as np
 from scipy import signal, stats
 from sklearn.cluster import KMeans
 from sklearn import preprocessing
+from sklearn.base import BaseEstimator, TransformerMixin
 
 import xarray as xr
 
@@ -15,23 +15,25 @@ from alphacsc.utils.signal import split_signal
 from ..utils import create_epochs
 
 
-class DecompositionICA():
+class DecompositionICA(TransformerMixin, BaseEstimator):
     def __init__(self, n_components: int = 20):
         self.n_components = n_components
 
-    def fit(self, X: xr.Dataset, y: mne.io.Raw):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        data = X[1]
+        ds = X[0]
         ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
-        ica.fit(y)
+        ica.fit(data)
 
-        X['ica_components'] = (("ica_component", "channels"),
-                               ica.get_components().T)
+        ds['ica_components'] = (("ica_component", "channels"),
+                                ica.get_components().T)
         # ICA timeseries [components x times]
-        X['ica_sources'] = (("ica_component", "time"),
-                            ica.get_sources(y).get_data())
-        X['ica_components_kurtosis'] = (
+        ds['ica_sources'] = (("ica_component", "time"),
+                             ica.get_sources(data).get_data())
+        ds['ica_components_kurtosis'] = (
             ("ica_component"),
-            ica.score_sources(y, score_func=stats.kurtosis)
+            ica.score_sources(data, score_func=stats.kurtosis)
             )
         # ica.score_sources(data, score_func=stats.skew)
         return self
@@ -41,33 +43,43 @@ class DecompositionICA():
 
 
 class ComponentsSelection():
-    def __init__(self, var: int = 10, gof: float = 80., gof_abs: float = 95.,
-                 kurtosis_min: float = 1., kurtosis_max: float = 10.,
-                 run: int = 0, n_runs: int = 4):
-        """Select ICA components for analysis
+    """Select ICA components for analysis
 
-        Parameters
-        ----------
-        var : int, optional
-            N first components selected by variance, by default 10
-        gof : float, optional
-            components dipole fitting threshold, by default 80.
-        gof_abs : float, optional
-            absolute dippole fitting threshold, by default 95.
-        kurtosis_min : float, optional
-            minimal kurtosis score of the ICA component, by default 1.
-        kurtosis_max : float, optional
-            maximal kurtosis score of the ICA component, by default 10.
-        run : int, optional
-            run number, by default 0
-        n_runs : int, optional
-            all runs in the analysis, by default 4
-        """
-        self.var = var  # n components selected by variance
+    Parameters
+    ----------
+    n_by_var : int, optional
+        N first components selected by variance, by default 10
+    gof : float, optional
+        components dipole fitting threshold, by default 80.
+    gof_abs : float, optional
+        absolute dippole fitting threshold, by default 95.
+    kurtosis_min : float, optional
+        minimal kurtosis score of the ICA component, by default 1.
+    kurtosis_max : float, optional
+        maximal kurtosis score of the ICA component, by default 10.
+    run : int, optional
+        run number, by default 0
+    n_runs : int, optional
+        all runs in the analysis, by default 4
+    """
+
+    def __init__(
+        self,
+        n_by_var: int = 10,
+        gof: float = 80.,
+        gof_abs: float = 95.,
+        kurtosis_min: float = 1.,
+        kurtosis_max: float = 10.,
+        n_runs: int = 4,
+        n_components_if_nothing_else: int = 7,
+        run: int = 0) -> None:
+
+        self.n_by_var = n_by_var  # n components selected by variance
         self.gof_param = gof
         self.gof_abs = gof_abs
         self.kurtosis_min = kurtosis_min
         self.kurtosis_max = kurtosis_max
+        self.n_components_if_nothing_else = n_components_if_nothing_else
         self.run = run
         self.n_runs = n_runs
 
@@ -79,7 +91,7 @@ class ComponentsSelection():
         kurtosis = X['ica_components_kurtosis'].values
         gof = X['ica_components_gof'].values
         selected = X['ica_components_selected'].values
-        selected[:self.var] = 1  # first n components by variance
+        selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
         selected[gof < self.gof_param] = 0
@@ -88,9 +100,10 @@ class ComponentsSelection():
         # ignoring the other parameters
         selected[gof > self.gof_abs] = 1
 
-        # select at 7 components by gof if nothing else vas selected
+        # select at 7 components by gof if nothing else was selected
         if np.sum(selected) == 0:
-            selected[np.argsort(gof)[::-1][:7]] = 1
+            selected[
+                np.argsort(gof)[::-1][:self.n_components_if_nothing_else]] = 1
 
         if self.run != 0:
             # cluster components
