@@ -156,6 +156,7 @@ class Simulation:
         fraw2 = (case_dir / 'MEG_data' / 'tsss_mc_artefact_correction'
                  / 'sample_raw_tsss_mc_art_corr.fif')
         Path.mkdir(fraw.parent, exist_ok=True, parents=True)
+        Path.mkdir(fraw2.parent, exist_ok=True, parents=True)
         ernoise = case_dir / 'MEG_data' / 'empty_room' / 'ernoise-cov.fif'
         Path.mkdir(ernoise.parent, exist_ok=True, parents=True)
 
