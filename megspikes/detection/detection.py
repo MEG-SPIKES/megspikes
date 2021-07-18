@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from typing import Union, List, Tuple
 import numpy as np
 from scipy import signal, stats
@@ -63,16 +62,15 @@ class ComponentsSelection():
         all runs in the analysis, by default 4
     """
 
-    def __init__(
-        self,
-        n_by_var: int = 10,
-        gof: float = 80.,
-        gof_abs: float = 95.,
-        kurtosis_min: float = 1.,
-        kurtosis_max: float = 10.,
-        n_runs: int = 4,
-        n_components_if_nothing_else: int = 7,
-        run: int = 0) -> None:
+    def __init__(self,
+                 n_by_var: int = 10,
+                 gof: float = 80.,
+                 gof_abs: float = 95.,
+                 kurtosis_min: float = 1.,
+                 kurtosis_max: float = 10.,
+                 n_runs: int = 4,
+                 n_components_if_nothing_else: int = 7,
+                 run: int = 0) -> None:
 
         self.n_by_var = n_by_var  # n components selected by variance
         self.gof_param = gof

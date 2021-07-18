@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-import numpy as np
+# import numpy as np
 import pytest
 from megspikes.database.database import Database
 from megspikes.detection.detection import DecompositionICA
 from megspikes.utils import PrepareData, simulate_raw
-from scipy.signal import find_peaks
-from sklearn.pipeline import make_pipeline
+# from scipy.signal import find_peaks
 
 
 @pytest.fixture(name="file_sensors")
@@ -36,13 +34,3 @@ def test_ica_decomposition(file_sensors, dataset):
         (ds, data) = pd.transform(ds)
         decomposition.fit((ds, data))
         _ = decomposition.transform(ds)
-
-
-@pytest.mark.pipeline
-@pytest.mark.happy
-def test_pipeline(file_sensors, dataset):
-    for (file, sensors), ds in zip(file_sensors, dataset):
-        pipe = make_pipeline(
-            PrepareData(file, sensors),
-            DecompositionICA(n_components=20))
-        _ = pipe.fit_transform(ds)
