@@ -4,7 +4,6 @@ from pathlib import Path
 import mne
 import numpy as np
 from scipy import signal
-from scipy.misc import electrocardiogram
 from scipy.ndimage.filters import gaussian_filter
 import xarray as xr
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -152,26 +151,3 @@ def onset_slope_timepoints(label_ts, n_times=3):
     slope_times = np.linspace(max(2, slope_left_base), peak, n_times)
     return slope_times
 
-
-def simulate_raw(seconds: int = 2, sampling_freq: int = 200,
-                 n_channels: int = 306):
-    ch_names = [f'MEG{n:03}' for n in range(1, n_channels + 1)]
-    ch_types = ['mag', 'grad', 'grad'] * 102
-    info = mne.create_info(ch_names, ch_types=ch_types, sfreq=sampling_freq)
-
-    esfreq = 360
-    if sampling_freq < esfreq:
-        data = electrocardiogram()[:seconds*esfreq]
-        data = signal.resample(data, seconds*sampling_freq)
-        # plt.plot(
-        #     np.linspace(0, 2, 2*esfreq), data[:2*esfreq], 'go-',
-        #     np.linspace(0, 2, 2*sfreq), data2[:2*sfreq], '.-')
-    else:
-        data = electrocardiogram()[:seconds*sampling_freq]
-
-    raw_data = np.repeat(np.array([data]), n_channels, axis=0)
-    noise = np.random.normal(0, .1, raw_data.shape)
-    raw_data = 1e-9 * (raw_data + noise)
-    raw = mne.io.RawArray(raw_data, info)
-    del raw_data
-    return raw, data

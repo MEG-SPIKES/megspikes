@@ -137,3 +137,6 @@ dmypy.json
 
 # MEG data
 *.fif
+
+# test example
+/example/
