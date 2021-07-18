@@ -1,35 +1,51 @@
+import os.path as op
+from pathlib import Path
+
 import pytest
+
 from megspikes.database.database import Database
+from megspikes.casemanager.casemanager import CaseManager
 from megspikes.detection.detection import DecompositionICA
-from megspikes.utils import PrepareData, simulate_raw
+from megspikes.utils import PrepareData
+from megspikes.simulation.simulation import Simulation
 from sklearn.pipeline import make_pipeline
 
+sample_path = Path(op.dirname(__file__)).parent.parent
+sample_path = sample_path / 'example'
+sample_path.mkdir(exist_ok=True)
 
-@pytest.fixture(name="file_sensors")
-def fixture_data():
-    raw_fif, _ = simulate_raw(10, 1000)
-    fname = 'raw_test.fif'
-    raw_fif.save(fname=fname, overwrite=True)
-    return [[fname, 'grad'],
-            [fname, 'mag']]
+sim = Simulation(sample_path)
+sim.load_mne_dataset()
+sim.simulate_dataset(length=10)
 
 
-@pytest.fixture(name="dataset")
-def fixture_dataset():
-    db = Database(meg_data_length=10_000)
-    ds = db.make_empty_dataset()
-    ds_grad = ds.sel(
-        sensors='grad', decomposition_sensors_type='grad', run=0).squeeze()
-    ds_mag = ds.sel(
-        sensors='mag', decomposition_sensors_type='mag', run=0).squeeze()
-    return [ds_grad, ds_mag]
+@pytest.fixture(name="sensors")
+def fixture_sensors():
+    return ['grad', 'mag']
+
+
+@pytest.fixture(name="runs")
+def fixture_runs():
+    return [0, 0]
 
 
 @pytest.mark.pipeline
 @pytest.mark.happy
-def test_pipeline(file_sensors, dataset):
-    for (file, sensors), ds in zip(file_sensors, dataset):
+@pytest.mark.slow
+def test_pipeline(sensors, runs):
+    case = CaseManager(root=sample_path, case='sample',
+                       free_surfer=sim.subjects_dir)
+    case.set_basic_folders()
+    case.select_fif_file(case.run)
+    case.prepare_forward_model()
+    db = Database()
+    db.read_case_info(case.fif_file, case.fwd['ico5'])
+    ds = db.make_empty_dataset()
+
+    for sens, run in zip(sensors, runs):
+        ds_sens = db.select_sensors(ds, sens, run)
         pipe = make_pipeline(
-            PrepareData(file, sensors),
+            PrepareData(case.fif_file, sens),
             DecompositionICA(n_components=20))
-        _ = pipe.fit_transform(ds)
+
+        _ = pipe.fit_transform(ds_sens)
