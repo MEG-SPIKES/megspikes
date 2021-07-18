@@ -1,0 +1,11 @@
+matplotlib
+mne
+nibabel
+nilearn
+numpy
+opencv-python
+openpyxl
+pandas
+scikit-learn
+scipy
+xlrd
