@@ -1,4 +1,6 @@
 from typing import Union, List, Tuple
+import warnings
+
 import numpy as np
 from scipy import signal, stats
 from sklearn.cluster import KMeans
@@ -40,7 +42,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         return X
 
 
-class ComponentsSelection():
+class ComponentsSelection(TransformerMixin, BaseEstimator):
     """Select ICA components for analysis
 
     Parameters
@@ -119,5 +121,90 @@ class ComponentsSelection():
             new_sel[labels + 1 != self.run] = 0
             selected[selected == 1] = new_sel
 
-        X[0]['ica_components_selected'].values = selected
+        X[0]['ica_components_selected'][:] = selected
+        return X
+
+
+class PeakDetection(TransformerMixin, BaseEstimator):
+    def __init__(self,
+                 sign: int = -1,
+                 sfreq: int = 200,
+                 h_filter: float = 20.,
+                 l_filter: float = 90,
+                 filter_order: int = 3,
+                 prominence: float = 7.,
+                 wlen: float = 2000.,
+                 rel_height: float = 0.5,
+                 width: float = 10.,
+                 n_detections_threshold: int = 2000) -> None:
+        # FIXME: sign should be list
+        self.sign = sign
+        self.sfreq = sfreq
+        self.h_filter = h_filter
+        self.l_filter = l_filter
+        self.filter_order = filter_order
+        self.prominence = prominence
+        self.wlen = wlen
+        self.rel_height = rel_height
+        self.width = width
+        self.n_detections_threshold = n_detections_threshold
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        sources = X[0]["ica_sources"].values
+        selected = X[0]["ica_components_selected"].values
+
+        source_ind = np.where(selected.flatten() > 0)[0].tolist()
+
+        timestamps = np.array([])
+        channels = np.array([])
+
+        # Loop to find required amount of the detections
+        n_detections = 0
+        while n_detections < self.n_detections_threshold:
+            for ind in source_ind:
+                data = sources[ind, :]
+                for s in [self.sign]:
+                    # Detect peaks
+                    if s == -1:
+                        data *= -1
+                    peaks, _ = self._find_peaks(data)
+                    timestamps = np.append(timestamps, peaks)
+                    channels = np.append(channels, np.ones_like(peaks)*ind)
+
+            n_detections = len(timestamps)
+
+            # prominence threshold goes down
+            if n_detections < self.n_detections_threshold:
+                self.prominence -= 0.5
+                if self.prominence < 2:
+                    n_detections = self.n_detections_threshold
+                else:
+                    timestamps = np.array([])
+                    channels = np.array([])
+        if len(timestamps) > self.n_detections_threshold:
+            n_det = self.n_detections_threshold
+        else:
+            n_det = len(timestamps)
+        X[0]["ica_peaks_timestamps"][:n_det] = timestamps[:n_det]
+        if n_det == 0:
+            warnings.warn("NO ICA peaks!!!")
+        return self
+
+    def _find_peaks(self, data):
+        freq = np.array([self.h_filter, self.l_filter]) / (self.sfreq / 2.0)
+        b, a = signal.butter(self.filter_order, freq, "pass")
+        data = signal.filtfilt(b, a, data)
+
+        # robust_scaleprominence {prominence}
+        data = preprocessing.robust_scale(data)
+
+        peaks, props = signal.find_peaks(
+            data, prominence=self.prominence, wlen=self.wlen,
+            rel_height=self.rel_height, width=self.width)
+        # delete peaks at the beginig and at the end of the recording
+        window = self.sfreq
+        peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
+        return peaks, props
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         return X

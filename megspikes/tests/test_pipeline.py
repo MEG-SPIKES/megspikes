@@ -2,14 +2,13 @@ import os.path as op
 from pathlib import Path
 
 import pytest
-
-from megspikes.database.database import Database
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.detection.detection import (DecompositionICA,
-                                           ComponentsSelection)
+from megspikes.database.database import Database
+from megspikes.detection.detection import (ComponentsSelection,
+                                           DecompositionICA, PeakDetection)
 from megspikes.localization.localization import ComponentsLocalization
-from megspikes.utils import PrepareData
 from megspikes.simulation.simulation import Simulation
+from megspikes.utils import PrepareData
 from sklearn.pipeline import make_pipeline
 
 sample_path = Path(op.dirname(__file__)).parent.parent
@@ -51,6 +50,6 @@ def test_pipeline(sensors, runs):
             PrepareData(case.fif_file, sens),
             DecompositionICA(n_components=2),
             ComponentsLocalization(case),
-            ComponentsSelection())
-
+            ComponentsSelection(),
+            PeakDetection(prominence=2., width=1.))
         _ = pipe.fit_transform(ds_sens)
