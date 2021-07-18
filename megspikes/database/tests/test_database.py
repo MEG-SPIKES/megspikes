@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from megspikes.database.database import Database
 
 
