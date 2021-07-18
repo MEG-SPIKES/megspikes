@@ -2,13 +2,14 @@
 import pytest
 from megspikes.database.database import Database
 from megspikes.detection.detection import DecompositionICA
-from megspikes.utils import PrepareData, simulate_raw
+from megspikes.utils import PrepareData
+from megspikes.simulation.simulation import simulate_raw_fast
 # from scipy.signal import find_peaks
 
 
 @pytest.fixture(name="file_sensors")
 def fixture_data():
-    raw_fif, _ = simulate_raw(10, 1000)
+    raw_fif, _ = simulate_raw_fast(10, 1000)
     fname = 'raw_test.fif'
     raw_fif.save(fname=fname, overwrite=True)
     return [[fname, 'grad'],
