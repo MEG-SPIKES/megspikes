@@ -1,7 +1,9 @@
-# -*- coding: utf-8 -*-
-from typing import List
+from typing import List, Union
+from pathlib import Path
 import xarray as xr
 import numpy as np
+
+import mne
 
 
 class Database():
@@ -340,3 +342,19 @@ class Database():
             "iz_predictions": iz_predictions
             })
         return ds
+
+    def read_case_info(self, fif_file_path: Union[str, Path],
+                       fwd: mne.Forward) -> None:
+        if not Path(fif_file_path).is_file():
+            raise RuntimeError("Fif file was not found")
+        fif_file = mne.io.read_raw_fif(fif_file_path, preload=False)
+        self.meg_data_length = fif_file.n_times
+        self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
+        del fif_file, fwd
+
+    def select_sensors(self, ds: xr.Dataset, sensors: str,
+                       run: int) -> xr.Dataset:
+        return ds.sel(
+            sensors=sensors,
+            decomposition_sensors_type=sensors,
+            run=run).squeeze()
