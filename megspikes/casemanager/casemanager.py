@@ -1,22 +1,26 @@
+from typing import List, Union
 import re
 from pathlib import Path
 import warnings
 
 import pandas as pd
 import mne
+mne.set_log_level("ERROR")
 
 
 class CaseManager():
-    def __init__(self, root=None, case=None, free_surfer=None):
+    def __init__(self, root: Union[str, Path, None] = None,
+                 case: Union[str, None] = None,
+                 free_surfer: Union[str, Path, None] = None):
         """
         Create folders and paths for further operations.
 
         Parameters
         ----------
-        case : str
-            the name of the case
         root : str
             the folder with all cases
+        case : str
+            the name of the case
 
         """
         # Root folders
@@ -147,9 +151,10 @@ class CaseManager():
         else:
             warnings.warn("No tsss fif file")
 
-    def prepare_forward_model(self, spacings=['ico5', 'oct5']):
+    def prepare_forward_model(self, spacings: List[str] = ['ico5', 'oct5'],
+                              sensors: Union[str, bool] = True) -> None:
         info = mne.io.read_info(self.fif_file)
-        self.info = mne.pick_info(info, mne.pick_types(info, meg=True))
+        self.info = mne.pick_info(info, mne.pick_types(info, meg=sensors))
         self.fwd = {}
         self.bem, self.src, self.trans = {}, {}, {}
         for spacing in spacings:
@@ -157,6 +162,10 @@ class CaseManager():
             fwd_name = fwd_name / f'forward_{spacing}.fif'
             fwd, bem, src, trans = self._prepare_forward_model(
                 fwd_name, self.info, spacing='ico5', n_jobs=7, fixed=False)
+
+            if isinstance(sensors, str):
+                fwd = mne.pick_types_forward(fwd, meg=sensors)
+
             self.fwd[spacing] = fwd
             self.bem[spacing] = bem
             self.src[spacing] = src

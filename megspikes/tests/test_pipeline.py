@@ -5,7 +5,9 @@ import pytest
 
 from megspikes.database.database import Database
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.detection.detection import DecompositionICA
+from megspikes.detection.detection import (DecompositionICA,
+                                           ComponentsSelection)
+from megspikes.localization.localization import ComponentsLocalization
 from megspikes.utils import PrepareData
 from megspikes.simulation.simulation import Simulation
 from sklearn.pipeline import make_pipeline
@@ -38,14 +40,17 @@ def test_pipeline(sensors, runs):
     case.set_basic_folders()
     case.select_fif_file(case.run)
     case.prepare_forward_model()
-    db = Database()
+    db = Database(n_ica_components=2)
     db.read_case_info(case.fif_file, case.fwd['ico5'])
     ds = db.make_empty_dataset()
 
     for sens, run in zip(sensors, runs):
         ds_sens = db.select_sensors(ds, sens, run)
+        case.prepare_forward_model(sensors=sens)
         pipe = make_pipeline(
             PrepareData(case.fif_file, sens),
-            DecompositionICA(n_components=20))
+            DecompositionICA(n_components=2),
+            ComponentsLocalization(case),
+            ComponentsSelection())
 
         _ = pipe.fit_transform(ds_sens)

@@ -6,10 +6,12 @@ from typing import Union
 import numpy as np
 import numpy.matlib
 
-import mne
 from mne.datasets import sample
 from scipy.misc import electrocardiogram
 from scipy import signal
+
+import mne
+mne.set_log_level("ERROR")
 
 
 class Simulation:
@@ -163,8 +165,9 @@ class Simulation:
         if hasattr(self, 'raw_simulation'):
             self.raw_simulation.save(str(fraw2), overwrite=True)
         else:
-            data, _ = simulate_raw_fast(seconds=1)
+            data, _ = simulate_raw_fast(seconds=1, sampling_freq=1000)
             data.save(str(fraw2), overwrite=True)
+            self.raw_simulation = data
         Path.mkdir(case_dir / 'forward_model', exist_ok=True, parents=True)
 
         shutil.copy(

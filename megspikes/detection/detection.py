@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 import xarray as xr
 
 import mne
+mne.set_log_level("ERROR")
 
 from alphacsc import GreedyCDL
 from alphacsc.utils.signal import split_signal
@@ -19,25 +20,23 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         self.n_components = n_components
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        data = X[1]
-        ds = X[0]
         ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
-        ica.fit(data)
+        ica.fit(X[1])
 
-        ds['ica_components'] = (("ica_component", "channels"),
-                                ica.get_components().T)
+        X[0]['ica_components'] = (("ica_component", "channels"),
+                                  ica.get_components().T)
         # ICA timeseries [components x times]
-        ds['ica_sources'] = (("ica_component", "time"),
-                             ica.get_sources(data).get_data())
-        ds['ica_components_kurtosis'] = (
+        X[0]['ica_sources'] = (("ica_component", "time"),
+                               ica.get_sources(X[1]).get_data())
+        X[0]['ica_components_kurtosis'] = (
             ("ica_component"),
-            ica.score_sources(data, score_func=stats.kurtosis)
+            ica.score_sources(X[1], score_func=stats.kurtosis)
             )
         # ica.score_sources(data, score_func=stats.skew)
         return self
 
-    def transform(self, X: xr.Dataset) -> xr.Dataset:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         return X
 
 
@@ -81,14 +80,14 @@ class ComponentsSelection():
         self.run = run
         self.n_runs = n_runs
 
-    def fit(self, X: xr.Dataset, y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
 
-    def transform(self, X) -> xr.Dataset:
-        components = X['ica_components'].values
-        kurtosis = X['ica_components_kurtosis'].values
-        gof = X['ica_components_gof'].values
-        selected = X['ica_components_selected'].values
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        components = X[0]['ica_components'].values
+        kurtosis = X[0]['ica_components_kurtosis'].values
+        gof = X[0]['ica_components_gof'].values
+        selected = X[0]['ica_components_selected'].values
         selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
@@ -120,5 +119,5 @@ class ComponentsSelection():
             new_sel[labels + 1 != self.run] = 0
             selected[selected == 1] = new_sel
 
-        X['ica_components_selected'].values = selected
+        X[0]['ica_components_selected'].values = selected
         return X
