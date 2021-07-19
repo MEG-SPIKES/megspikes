@@ -21,7 +21,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
     def __init__(self, n_components: int = 20):
         self.n_components = n_components
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
         ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
         ica.fit(X[1])
@@ -35,7 +35,8 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         # ica.score_sources(data, score_func=stats.skew)
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
+                                                        mne.io.Raw]:
         return X
 
 
@@ -79,10 +80,11 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         self.run = run
         self.n_runs = n_runs
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
+                                                        mne.io.Raw]:
         components = X[0]['ica_components'].values
         kurtosis = X[0]['ica_components_kurtosis'].values
         gof = X[0]['ica_components_gof'].values
@@ -146,7 +148,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         self.width = width
         self.n_detections_threshold = n_detections_threshold
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
         sources = X[0]["ica_sources"].values
         selected = X[0]["ica_components_selected"].values
 
@@ -203,5 +205,6 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
         return peaks, props
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
+                                                        mne.io.Raw]:
         return X

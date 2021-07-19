@@ -47,10 +47,21 @@ def make_dataset():
 
 
 def test_components_localization(dataset):
+    ds = dataset.copy(deep=True)
+    case.prepare_forward_model()
+    prep_data = PrepareData(sensors='grad')
+    (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
+    cl = ComponentsLocalization(case=case, sensors='grad')
+    results = cl.fit_transform((ds, raw))
+    assert results[0]['ica_components_localization'].any()
+    assert results[0]['ica_components_gof'].any()
+    del results, ds
+
+    ds = dataset.copy(deep=True)
     case.prepare_forward_model(sensors='grad')
     prep_data = PrepareData(sensors='grad')
-    (_, raw) = prep_data.fit_transform((dataset, sim.raw_simulation))
+    (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
     cl = ComponentsLocalization(case=case)
-    results = cl.fit_transform((dataset, raw))
+    results = cl.fit_transform((ds, raw))
     assert results[0]['ica_components_localization'].any()
     assert results[0]['ica_components_gof'].any()

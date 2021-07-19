@@ -46,12 +46,12 @@ class PrepareData(BaseEstimator, TransformerMixin):
         self.resample = resample
         self.alpha_notch = alpha_notch
 
-    def fit(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]], y=None):
+    def fit(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]], y=None,
+            **fit_params):
         return self
 
-    def transform(self, X: Union[
-        xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]]) -> Tuple[
-            xr.Dataset, mne.io.Raw]:
+    def transform(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]],
+                  **transform_params) -> Tuple[xr.Dataset, mne.io.Raw]:
         if isinstance(X, tuple):
             data = self._prepare_data(data=X[1])
         else:

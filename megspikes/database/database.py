@@ -1,8 +1,8 @@
-from typing import List, Union
+from typing import List, Union, Any, Tuple
 from pathlib import Path
 import xarray as xr
 import numpy as np
-
+from sklearn.base import BaseEstimator, TransformerMixin
 import mne
 
 
@@ -339,3 +339,18 @@ class Database():
     def select_sensors(self, ds: xr.Dataset, sensors: str,
                        run: int) -> xr.Dataset:
         return ds.sel(sensors=sensors, run=run).squeeze()
+
+
+class DatabaseSubset(TransformerMixin, BaseEstimator):
+    def __init__(self, sensors: str, run: int) -> None:
+        if sensors == 'grad':
+            self.sensors = 0
+        else:
+            self.sensors = 1
+        self.run = run
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None, **fit_params):
+        return self
+
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
+        return (X[0][dict(run=self.run, sensors=self.sensors)].squeeze(), X[1])
