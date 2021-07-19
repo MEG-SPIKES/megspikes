@@ -353,4 +353,12 @@ class DatabaseSubset(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
-        return (X[0][dict(run=self.run, sensors=self.sensors)].squeeze(), X[1])
+        if ('run' in X[0].dims) & ('sensors' in X[0].dims):
+            return (X[0][dict(run=self.run, sensors=self.sensors)].squeeze(),
+                    X[1])
+        elif 'run' in X[0].dims:
+            return (X[0][dict(run=self.run)].squeeze(), X[1])
+        elif 'sensors' in X[0].dims:
+            return (X[0][dict(sensors=self.sensors)].squeeze(), X[1])
+        else:
+            return X

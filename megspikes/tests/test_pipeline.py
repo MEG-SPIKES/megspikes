@@ -39,8 +39,8 @@ def test_pipeline(sensors, runs):
     case.set_basic_folders()
     case.select_fif_file(case.run)
     case.prepare_forward_model()
-
-    db = Database(n_ica_components=2)
+    n_ica_components = 3
+    db = Database(n_ica_components=n_ica_components)
     db.read_case_info(case.fif_file, case.fwd['ico5'])
     ds = db.make_empty_dataset()
 
@@ -66,7 +66,8 @@ def test_pipeline(sensors, runs):
                 ('prepare_data',
                  PrepareData(data_file=data_path, sensors=sens)),
                 ('select_dataset', DatabaseSubset(sensors=sens, run=0)),
-                ('ica_decomposition', DecompositionICA(n_components=2)),
+                ('ica_decomposition',
+                 DecompositionICA(n_components=n_ica_components)),
                 ('components_localization',
                  ComponentsLocalization(case=case, sensors=sens)),
                 ('spikes_detection', FeatureUnion(pipe_runs))])))

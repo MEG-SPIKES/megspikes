@@ -54,9 +54,10 @@ class PrepareData(BaseEstimator, TransformerMixin):
                   **transform_params) -> Tuple[xr.Dataset, mne.io.Raw]:
         if isinstance(X, tuple):
             data = self._prepare_data(data=X[1])
+            return (X[0], data)
         else:
             data = self._prepare_data(data=None)
-        return (X, data)
+            return (X, data)
 
     def _prepare_data(self, data: Union[None, mne.io.Raw]) -> mne.io.Raw:
         if data is None:
