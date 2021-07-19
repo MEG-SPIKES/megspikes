@@ -25,16 +25,13 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
         ica.fit(X[1])
-
-        X[0]['ica_components'] = (("ica_component", "channels"),
-                                  ica.get_components().T)
+        components = ica.get_components().T
+        (_, n_channels) = components.shape
+        X[0]['ica_components'][:, :n_channels] = components
         # ICA timeseries [components x times]
-        X[0]['ica_sources'] = (("ica_component", "time"),
-                               ica.get_sources(X[1]).get_data())
-        X[0]['ica_components_kurtosis'] = (
-            ("ica_component"),
-            ica.score_sources(X[1], score_func=stats.kurtosis)
-            )
+        X[0]['ica_sources'][:, :] = ica.get_sources(X[1]).get_data()
+        X[0]['ica_components_kurtosis'][:] = ica.score_sources(
+            X[1], score_func=stats.kurtosis)
         # ica.score_sources(data, score_func=stats.skew)
         return self
 
@@ -74,7 +71,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                  run: int = 0) -> None:
 
         self.n_by_var = n_by_var  # n components selected by variance
-        self.gof_param = gof
+        self.gof = gof
         self.gof_abs = gof_abs
         self.kurtosis_min = kurtosis_min
         self.kurtosis_max = kurtosis_max
@@ -93,7 +90,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
-        selected[gof < self.gof_param] = 0
+        selected[gof < self.gof] = 0
 
         # if component has gof > 97 include it in any case,
         # ignoring the other parameters

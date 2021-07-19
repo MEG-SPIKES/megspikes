@@ -35,9 +35,7 @@ def make_dataset():
         ica_sources = np.array([cardio_ts]*n_ica_comp)*5
         ds[sel][name][:, :] = ica_sources
         name = "ica_components_localization"
-        ds[sel][name] = (
-            ("ica_component", "mni_coordinates"),
-            np.random.sample((n_ica_comp, 3)))
+        ds[sel][name][:, :] = np.random.sample((n_ica_comp, 3))
         name = "ica_components_gof"
         ds[sel][name][:] = np.array([72., 85., 94., 99.])
         name = "ica_components_kurtosis"
@@ -48,11 +46,15 @@ def make_dataset():
 @pytest.mark.happy
 def test_ica_decomposition(sensors, dataset):
     for sens in sensors:
-        pd = PrepareData(fname, sens)
+        pd = PrepareData(data_file=fname, sensors=sens)
         ds_channles = db.select_sensors(dataset, sens, 0)
         decomposition = DecompositionICA(n_components=n_ica_comp)
         (ds_channles, data) = pd.fit_transform(ds_channles)
         _ = decomposition.fit_transform((ds_channles, data))
+    assert dataset[dict(run=0, sensors=0)].ica_sources.any()
+    assert dataset[dict(run=0, sensors=1)].ica_sources.any()
+    assert dataset[dict(run=0, sensors=1)].ica_components[0, 50] != 0
+    assert dataset[dict(run=0, sensors=1)].ica_components[0, 200] == 0
 
 
 def test_components_selection(sensors, dataset):

@@ -10,32 +10,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class PrepareData(BaseEstimator, TransformerMixin):
-    def __init__(self,
-                 data_file: Union[str, Path],
-                 sensors: Union[str, int],
-                 filtering: Union[None, List[float]] = [2, 90, 50],
-                 resample: Union[None, float] = None,
-                 alpha_notch: Union[None, float] = None) -> None:
-        self.data_file = data_file
-        self.sensors = sensors
-        self.filtering = filtering
-        self.resample = resample
-        self.alpha_notch = alpha_notch
-
-    def fit(self, X: xr.Dataset, y=None):
-        return self
-
-    def transform(self, X: xr.Dataset) -> Tuple[xr.Dataset, mne.io.Raw]:
-        data = prepare_data(
-            self.data_file, self.sensors, self.filtering, self.resample,
-            self.alpha_notch)
-        return (X, data)
-
-
-def prepare_data(data_file: Union[str, Path], sensors: Union[str, int],
-                 filtering: Union[None, List[float]] = [2, 90, 50],
-                 resample: Union[None, float] = None,
-                 alpha_notch: Union[None, float] = None) -> mne.io.Raw:
     """Prepare mne.io.Raw object analysis
 
     Parameters
@@ -60,26 +34,46 @@ def prepare_data(data_file: Union[str, Path], sensors: Union[str, int],
     mne.io.Raw
 
     """
-    data = mne.io.read_raw_fif(data_file, preload=True)
-    data.pick_types(
-        meg=sensors,
-        eeg=False,
-        stim=False,
-        eog=False,
-        ecg=False,
-        emg=False,
-        misc=False,
-    )
-    if filtering is not None:
-        data.filter(filtering[0], filtering[1])
-        data.notch_filter(filtering[2])
+    def __init__(self,
+                 data_file: Union[str, Path, None] = None,
+                 sensors: Union[str, bool] = True,
+                 filtering: Union[None, List[float]] = [2, 90, 50],
+                 resample: Union[None, float] = None,
+                 alpha_notch: Union[None, float] = None) -> None:
+        self.data_file = data_file
+        self.sensors = sensors
+        self.filtering = filtering
+        self.resample = resample
+        self.alpha_notch = alpha_notch
 
-    if alpha_notch:
-        data.notch_filter(alpha_notch, trans_bandwidth=2.0)
+    def fit(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]], y=None):
+        return self
 
-    if resample:
-        data = data.resample(resample, npad="auto")
-    return data
+    def transform(self, X: Union[
+        xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]]) -> Tuple[
+            xr.Dataset, mne.io.Raw]:
+        if isinstance(X, tuple):
+            data = self._prepare_data(data=X[1])
+        else:
+            data = self._prepare_data(data=None)
+        return (X, data)
+
+    def _prepare_data(self, data: Union[None, mne.io.Raw]) -> mne.io.Raw:
+        if data is None:
+            data = mne.io.read_raw_fif(self.data_file, preload=True)
+        data.pick_types(
+            meg=self.sensors, eeg=False, stim=False, eog=False, ecg=False,
+            emg=False, misc=False)
+        if self.filtering is not None:
+            data.filter(self.filtering[0], self.filtering[1])
+            data.notch_filter(self.filtering[2])
+
+        if self.alpha_notch:
+            data.notch_filter(self.alpha_notch, trans_bandwidth=2.0)
+
+        if self.resample:
+            data = data.resample(self.resample, npad="auto")
+        return data
 
 
 def create_epochs(raw_filt, detections, tmin=-0.5, tmax=0.5, picks_raw=True):

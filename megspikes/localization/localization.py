@@ -22,8 +22,10 @@ class ComponentsLocalization(BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager):
         if not isinstance(case.fwd['oct5'], mne.Forward):
             raise RuntimeError("CaseManager don't include forward model")
+        self.case = case
         self.case_name = case.case
         self.info = case.info
+        self.n_channels = len(mne.pick_types(self.info, meg=True))
         self.fwd = case.fwd['oct5']
         self.bem = case.bem['oct5']
         self.trans = case.trans['oct5']
@@ -31,7 +33,7 @@ class ComponentsLocalization(BaseEstimator, TransformerMixin):
         self.cov = mne.make_ad_hoc_cov(self.info)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        components = X[0]['ica_components'].values.T
+        components = X[0]['ica_components'].values[:, :self.n_channels].T
         evoked = mne.EvokedArray(components, self.info)
         dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
 

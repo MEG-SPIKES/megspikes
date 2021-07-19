@@ -9,6 +9,7 @@ import mne
 from megspikes.casemanager.casemanager import CaseManager
 from megspikes.localization.localization import (ComponentsLocalization)
 from megspikes.simulation.simulation import Simulation
+from megspikes.utils import PrepareData
 
 import xarray as xr
 
@@ -24,14 +25,13 @@ case = CaseManager(root=sample_path, case='sample',
                    free_surfer=sim.subjects_dir)
 case.set_basic_folders()
 case.select_fif_file(case.run)
-case.prepare_forward_model()
 
 
 @pytest.fixture(name="dataset")
 def make_dataset():
     n_ica_comp = 3
     ica_components = xr.DataArray(
-        np.ones((n_ica_comp, 306)),
+        np.ones((n_ica_comp, 204)),
         dims=("ica_component", "channels"))
     ica_components_localization = xr.DataArray(
         np.random.sample((n_ica_comp, 3)),
@@ -47,8 +47,10 @@ def make_dataset():
 
 
 def test_components_localization(dataset):
+    case.prepare_forward_model(sensors='grad')
+    prep_data = PrepareData(sensors='grad')
+    (_, raw) = prep_data.fit_transform((dataset, sim.raw_simulation))
     cl = ComponentsLocalization(case=case)
-    cl.fit((dataset, sim.raw_simulation))
-    results = cl.fit_transform((dataset, sim.raw_simulation))
+    results = cl.fit_transform((dataset, raw))
     assert results[0]['ica_components_localization'].any()
     assert results[0]['ica_components_gof'].any()

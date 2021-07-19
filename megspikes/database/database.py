@@ -57,23 +57,15 @@ class Database():
                 },
             name="ica_sources")
 
-        ica_comp_vars = {}
-        for sens, n_channels in zip(self.sensors,
-                                    self.n_sensors_by_types):
-            ica_comp_vars[sens] = xr.DataArray(
-                np.zeros((self.n_ica_components, n_channels)),
-                dims=("ica_component", f"channels_{sens}"),
-                coords={
-                    "ica_component": np.arange(self.n_ica_components),
-                    f"channels_{sens}": np.arange(n_channels)
-                    },
-                name=f"ica_components_{sens}")
-
-        ica_components = xr.Dataset(data_vars=ica_comp_vars)
-
-        ica_components = ica_components.to_stacked_array(
-            "channels", sample_dims=["ica_component"],
-            variable_dim="decomposition_sensors_type")
+        ica_components = xr.DataArray(
+            np.zeros((self.n_sensor_types, self.n_ica_components,
+                      max(self.n_sensors_by_types))),
+            dims=("sensors", "ica_component", "channels"),
+            coords={
+                "sensors": ['grad', 'mag'],
+                "ica_component": np.arange(self.n_ica_components),
+                },
+            name="ica_components")
 
         ica_components_localization = xr.DataArray(
             np.zeros((self.n_sensor_types, self.n_ica_components, 3)),
@@ -158,24 +150,16 @@ class Database():
 
         # --------- AlphaCSC decomposition --------- #
 
-        u_hat_vars = {}
-        for sens, n_channels in zip(self.sensors,
-                                    self.n_sensors_by_types):
-            u_hat_vars[sens] = xr.DataArray(
-                np.zeros((self.n_runs, self.n_atoms, n_channels)),
-                dims=("run", "atom", f"channels_{sens}"),
-                coords={
-                    "run": np.arange(self.n_runs),
-                    "atom": np.arange(self.n_atoms),
-                    f"channels_{sens}": np.arange(n_channels)
-                    },
-                name=f"u_hat_{sens}")
-
-        u_hat = xr.Dataset(data_vars=u_hat_vars)
-
-        u_hat = u_hat.to_stacked_array(
-            "channels", sample_dims=["run", "atom"],
-            variable_dim="decomposition_sensors_type")
+        u_hat = xr.DataArray(
+            np.zeros((self.n_runs, self.n_sensor_types,
+                      self.n_atoms, max(self.n_sensors_by_types))),
+            dims=("run", "sensors", "atom", "channels"),
+            coords={
+                "run": np.arange(self.n_runs),
+                "sensors": ['grad', 'mag'],
+                "atom": np.arange(self.n_atoms),
+                },
+            name="u_hat")
 
         n_samples = np.int32(self.atom_length / 1000 * self.sfreq2)
         v_hat = xr.DataArray(
@@ -354,7 +338,4 @@ class Database():
 
     def select_sensors(self, ds: xr.Dataset, sensors: str,
                        run: int) -> xr.Dataset:
-        return ds.sel(
-            sensors=sensors,
-            decomposition_sensors_type=sensors,
-            run=run).squeeze()
+        return ds.sel(sensors=sensors, run=run).squeeze()
