@@ -2,7 +2,8 @@ from megspikes.casemanager.casemanager import CaseManager
 from megspikes.database.database import LoadDataset, SaveDataset
 from megspikes.detection.detection import (ComponentsSelection,
                                            DecompositionICA, PeakDetection)
-from megspikes.localization.localization import ComponentsLocalization
+from megspikes.localization.localization import (ComponentsLocalization,
+                                                 PeakLocalization)
 from megspikes.utils import PrepareData, ToTest
 from sklearn.pipeline import Pipeline, FeatureUnion
 
@@ -22,6 +23,8 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 3):
                     ('select_ica_components', ComponentsSelection(run=run)),
                     ('detect_ica_peaks',
                      PeakDetection(prominence=2., width=1.)),
+                    ('peaks_localization',
+                     PeakLocalization(case=case, sensors=sens)),
                     ('save_dataset',
                      SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('test', ToTest())

@@ -119,8 +119,9 @@ class Database():
             name="ica_peaks_timestamps")
 
         ica_peaks_localization = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types, 3)),
-            dims=("run", "sensors", "mni_coordinates"),
+            np.zeros((self.n_runs, self.n_sensor_types,
+                      self.n_detected_peaks, 3)),
+            dims=("run", "sensors", "ica_timestamps", "mni_coordinates"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
