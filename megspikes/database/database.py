@@ -376,7 +376,16 @@ class SaveDataset(TransformerMixin, BaseEstimator):
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
         selection = dict(run=self.run, sensors=self.sensors)
         ds = xr.load_dataset(self.dataset)
-        ds[selection].update(X[0])
-        ds.to_netcdf(self.dataset, mode='a', format="NETCDF4", engine="netcdf4")
+        # TODO: fix this
+        for key, val in ds[selection].items():
+            shape = ds[selection][key].shape
+            if len(shape) == 1:
+                ds[selection][key][:] = X[0][key]
+            elif len(shape) == 2:
+                ds[selection][key][:, :] = X[0][key]
+            elif len(shape) == 3:
+                ds[selection][key][:, :, :] = X[0][key]
+        ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                     engine="netcdf4")
         # ds.to_netcdf(self.dataset)
         return X
