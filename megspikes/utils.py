@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Any
 from pathlib import Path
 import mne
 import numpy as np
@@ -46,12 +46,12 @@ class PrepareData(BaseEstimator, TransformerMixin):
         self.resample = resample
         self.alpha_notch = alpha_notch
 
-    def fit(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]], y=None,
+    def fit(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]], y=None,
             **fit_params):
         return self
 
-    def transform(self, X: Union[xr.Dataset, Tuple[xr.Dataset, mne.io.Raw]],
-                  **transform_params) -> Tuple[xr.Dataset, mne.io.Raw]:
+    def transform(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]],
+                  **transform_params) -> Tuple[Any, mne.io.Raw]:
         if isinstance(X, tuple):
             data = self._prepare_data(data=X[1])
             return (X[0], data)
@@ -146,3 +146,13 @@ def onset_slope_timepoints(label_ts, n_times=3):
     slope_times = np.linspace(max(2, slope_left_base), peak, n_times)
     return slope_times
 
+
+class ToTest(TransformerMixin, BaseEstimator):
+    def __init__(self) -> None:
+        pass
+
+    def fit(self, X, y=None, **fit_params):
+        return self
+
+    def transform(self, X, **transform_params):
+        return [1]

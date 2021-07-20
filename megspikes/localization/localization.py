@@ -1,4 +1,5 @@
 from typing import List, Tuple, Union
+import logging
 
 import numpy as np
 import xarray as xr
@@ -54,4 +55,5 @@ class ComponentsLocalization(BaseEstimator, TransformerMixin):
 
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
                                                         mne.io.Raw]:
+        logging.info("ICA components are localized.")
         return X

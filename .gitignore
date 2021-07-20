@@ -140,3 +140,7 @@ dmypy.json
 
 # test example
 /example/
+
+# data
+*.nc
+*.h5

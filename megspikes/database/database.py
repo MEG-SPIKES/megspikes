@@ -341,8 +341,10 @@ class Database():
         return ds.sel(sensors=sensors, run=run).squeeze()
 
 
-class DatabaseSubset(TransformerMixin, BaseEstimator):
-    def __init__(self, sensors: str, run: int) -> None:
+class LoadDataset(TransformerMixin, BaseEstimator):
+    def __init__(self, dataset: Union[str, Path], sensors: str,
+                 run: int) -> None:
+        self.dataset = dataset
         if sensors == 'grad':
             self.sensors = 0
         else:
@@ -353,12 +355,28 @@ class DatabaseSubset(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
-        if ('run' in X[0].dims) & ('sensors' in X[0].dims):
-            return (X[0][dict(run=self.run, sensors=self.sensors)].squeeze(),
-                    X[1])
-        elif 'run' in X[0].dims:
-            return (X[0][dict(run=self.run)].squeeze(), X[1])
-        elif 'sensors' in X[0].dims:
-            return (X[0][dict(sensors=self.sensors)].squeeze(), X[1])
+        selection = dict(run=self.run, sensors=self.sensors)
+        ds = xr.load_dataset(self.dataset)
+        return (ds[selection].squeeze(), X[1])
+
+
+class SaveDataset(TransformerMixin, BaseEstimator):
+    def __init__(self, dataset: Union[str, Path], sensors: str,
+                 run: int) -> None:
+        self.dataset = dataset
+        if sensors == 'grad':
+            self.sensors = 0
         else:
-            return X
+            self.sensors = 1
+        self.run = run
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None, **fit_params):
+        return self
+
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
+        selection = dict(run=self.run, sensors=self.sensors)
+        ds = xr.load_dataset(self.dataset)
+        ds[selection].update(X[0])
+        ds.to_netcdf(self.dataset, mode='a', format="NETCDF4", engine="netcdf4")
+        # ds.to_netcdf(self.dataset)
+        return X

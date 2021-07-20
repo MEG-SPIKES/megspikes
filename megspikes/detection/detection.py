@@ -1,5 +1,6 @@
 from typing import Union, List, Tuple
 import warnings
+import logging
 
 import numpy as np
 from scipy import signal, stats
@@ -37,6 +38,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
 
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
                                                         mne.io.Raw]:
+        logging.info("ICA decomposition is done.")
         return X
 
 
@@ -121,6 +123,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
             selected[selected == 1] = new_sel
 
         X[0]['ica_components_selected'][:] = selected
+        logging.info("ICA components selection is done.")
         return X
 
 
@@ -207,4 +210,5 @@ class PeakDetection(TransformerMixin, BaseEstimator):
 
     def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
                                                         mne.io.Raw]:
+        logging.info("ICA peaks detection is done.")
         return X

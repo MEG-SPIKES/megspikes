@@ -35,6 +35,8 @@ class CaseManager():
         # Read case info (Excel)
         self.read_case_info()
 
+        self.dataset = self.case_meg / f"{case}_results.nc"
+
     def read_case_info(self):
         case = self.case
         if not (self.root / 'case_info.xlsx').is_file():

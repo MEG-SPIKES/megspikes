@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.database.database import Database, DatabaseSubset
+from megspikes.database.database import Database, LoadDataset, SaveDataset
 from megspikes.detection.detection import (ComponentsSelection,
                                            DecompositionICA, PeakDetection)
 from megspikes.localization.localization import ComponentsLocalization
 from megspikes.simulation.simulation import Simulation
-from megspikes.utils import PrepareData
+from megspikes.utils import PrepareData, ToTest
 from sklearn.pipeline import Pipeline, FeatureUnion
 
 sample_path = Path(op.dirname(__file__)).parent.parent
@@ -43,6 +43,7 @@ def test_pipeline(sensors, runs):
     db = Database(n_ica_components=n_ica_components)
     db.read_case_info(case.fif_file, case.fwd['ico5'])
     ds = db.make_empty_dataset()
+    ds.to_netcdf(case.dataset)
 
     data_path = case.fif_file
 
@@ -55,22 +56,30 @@ def test_pipeline(sensors, runs):
                 (f'run_{run}',
                  Pipeline([
                     ('prepare_data', PrepareData(sensors=sens, resample=200.)),
-                    ('select_dataset', DatabaseSubset(sensors=sens, run=run)),
+                    ('load_select_dataset',
+                     LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('select_ica_components', ComponentsSelection(run=run)),
                     ('detect_ica_peaks',
                      PeakDetection(prominence=2., width=1.)),
+                    ('save_dataset',
+                     SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
+                    ('test', ToTest())
                     ])))
         pipe_sensors.append(
             (sens,
              Pipeline([
                 ('prepare_data',
                  PrepareData(data_file=data_path, sensors=sens)),
-                ('select_dataset', DatabaseSubset(sensors=sens, run=0)),
+                ('select_dataset',
+                 LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                 ('ica_decomposition',
                  DecompositionICA(n_components=n_ica_components)),
                 ('components_localization',
                  ComponentsLocalization(case=case, sensors=sens)),
-                ('spikes_detection', FeatureUnion(pipe_runs))])))
+                ('save_dataset',
+                    SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
+                ('spikes_detection', FeatureUnion(pipe_runs))
+                ])))
         pipe_runs = []
     pipe = Pipeline([
         ('make_clusters_library',  FeatureUnion(pipe_sensors))])
