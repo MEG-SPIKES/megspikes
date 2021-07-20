@@ -26,10 +26,15 @@ def test_pipeline():
     case.select_fif_file(case.run)
     case.prepare_forward_model()
     n_ica_components = 3
-    db = Database(n_ica_components=n_ica_components)
+    n_ica_peaks = 20
+    n_cleaned_peaks = 5
+    db = Database(n_ica_components=n_ica_components,
+                  n_detected_peaks=n_ica_peaks,
+                  n_cleaned_peaks=n_cleaned_peaks)
     db.read_case_info(case.fif_file, case.fwd['ico5'])
     ds = db.make_empty_dataset()
     ds.to_netcdf(case.dataset)
 
-    pipe = make_full_pipeline(case, n_ica_components=n_ica_components)
+    pipe = make_full_pipeline(case, n_ica_components=n_ica_components,
+                              n_ica_peaks=n_ica_peaks)
     _ = pipe.fit_transform(None)

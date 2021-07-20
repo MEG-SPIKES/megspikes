@@ -97,7 +97,7 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         window = (np.array(self.window)/1000)*self.sfreq
         mni_coords, subcorr = self.fast_music(
             data, self.info, spikes, window=window)
-        X[0]['ica_peaks_localization'][:n_peaks, :] = mni_coords
+        X[0]["ica_peaks_localization"][:n_peaks, :] = mni_coords
         X[0]["ica_peaks_subcorr"][:n_peaks] = subcorr
         return self
 

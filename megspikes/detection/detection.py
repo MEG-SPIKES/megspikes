@@ -212,3 +212,64 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                                                         mne.io.Raw]:
         logging.info("ICA peaks detection is done.")
         return X
+
+
+class CleanDetections(TransformerMixin, BaseEstimator):
+    """Select one spike in each diff_threshold ms using subcorr values
+
+    Parameters
+    ----------
+    diff_threshold : int, optional
+        refractory period between spikes in ms, by default 500
+    n_spikes : int, optional
+        select N spikes using subcorr value, by default 300
+        This option is used to ensure that there are no more
+        than a certain number of detections.
+    """
+    def __init__(self, diff_threshold: int = 500, n_cleaned_peaks: int = 300):
+        self.diff_threshold = diff_threshold
+        self.n_cleaned_peaks = n_cleaned_peaks
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+
+        # mni_coord = X[0]["ica_peaks_localization"].values
+        subcorr = X[0]["ica_peaks_subcorr"].values
+        timestamps = X[0]["ica_peaks_timestamps"].values  # ms
+
+        # all information about spikes in one array
+        spikes = np.array([timestamps, subcorr]).T
+
+        # sort spikes by time
+        sorted_spikes_ind = np.argsort(spikes[:, 0])
+        spikes = spikes[sorted_spikes_ind, :]
+        cleaned_spikes = []
+
+        for time in range(0, int(spikes[:, 0].max()), self.diff_threshold):
+            # spikes in the diff window
+            mask = (spikes[:, 0] > time) & (
+                spikes[:, 0] <= (time + self.diff_threshold))
+            spikes_in_range = spikes[mask, :]
+            if len(spikes_in_range) > 0:
+                # select max subcorr
+                s_max_idx = np.argmax(spikes_in_range[:, 1])
+                # append spike with max subcorr value
+                cleaned_spikes.append(spikes_in_range[s_max_idx, :])
+
+        cleaned_spikes = np.array(cleaned_spikes)
+
+        # Select n_spikes with max subcorr
+        sort_ind = np.argsort(
+            cleaned_spikes[:, 1])[::-1][:self.n_cleaned_peaks]
+        cleaned_spikes = cleaned_spikes[sort_ind, :]
+
+        sorted_spikes_ind = np.argsort(cleaned_spikes[:, 0])
+        cleaned_spikes = cleaned_spikes[sorted_spikes_ind, :]
+
+        mask = np.isin(timestamps, cleaned_spikes[:, 0])
+        X[0]["ica_peaks_selected"][:] = np.int32(mask)
+        return self
+
+    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
+                                                        mne.io.Raw]:
+        logging.info("ICA peaks cleaning is done.")
+        return X
