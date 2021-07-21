@@ -45,7 +45,7 @@ class ComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
         self.setup_fwd(case, sensors)
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         components = X[0]['ica_components'].values[:, :self.n_channels].T
         evoked = mne.EvokedArray(components, self.info)
         dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
@@ -58,8 +58,7 @@ class ComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
             X[0]['ica_components_gof'][n] = d.gof[0]
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA components are localized.")
         return X
 
@@ -80,12 +79,11 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         self.window = window
         self.sfreq = sfreq
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA peaks are localized.")
         return X
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         timestamps = X[0]["ica_peaks_timestamps"]
         timestamps = timestamps[timestamps != 0]
         n_peaks = len(timestamps)

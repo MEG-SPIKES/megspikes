@@ -46,12 +46,11 @@ class PrepareData(BaseEstimator, TransformerMixin):
         self.resample = resample
         self.alpha_notch = alpha_notch
 
-    def fit(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]], y=None,
-            **fit_params):
+    def fit(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]], y=None):
         return self
 
     def transform(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]],
-                  **transform_params) -> Tuple[Any, mne.io.Raw]:
+                  ) -> Tuple[Any, mne.io.Raw]:
         if isinstance(X, tuple):
             data = self._prepare_data(data=X[1])
             return (X[0], data)
@@ -77,7 +76,9 @@ class PrepareData(BaseEstimator, TransformerMixin):
         return data
 
 
-def create_epochs(raw_filt, detections, tmin=-0.5, tmax=0.5, picks_raw=True):
+def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
+                  tmin: float = -0.5, tmax: float = 0.5,
+                  sensors: Union[str, bool] = True,):
     '''
     Here we create epochs for events
     NOTE: !!! if the difference between detections is 1 sample one of the
@@ -85,7 +86,7 @@ def create_epochs(raw_filt, detections, tmin=-0.5, tmax=0.5, picks_raw=True):
 
     Parameters
     ----------
-    raw_filt : fif
+    meg_data : fif
         entire record from which events will be retrieved
     detections : list
         timepoints in ms. Should be aligned to the first sample.
@@ -94,7 +95,7 @@ def create_epochs(raw_filt, detections, tmin=-0.5, tmax=0.5, picks_raw=True):
         time before the detection. The default is -0.5.
     tmax : float, optional
         time after the detection. The default is 0.5.
-    picks_raw : str or bool, optional
+    sensors : str or bool, optional
         channels type ("gard", "mag" or True). The default is True.
 
     Returns
@@ -103,31 +104,31 @@ def create_epochs(raw_filt, detections, tmin=-0.5, tmax=0.5, picks_raw=True):
         Preloaded epochs for each detected event.
 
     '''
-    raw_filt.load_data()
+    meg_data.load_data()
     new_events, eve = [], []
 
     for spike_time in detections:
         eve = [int(round(spike_time)), 0, 1]
         new_events.append(eve)
 
-    # Adding new stim channel
+    # Adding new stimulus channel
     ch_name = 'NEW_DET'
-    if ch_name not in raw_filt.info['ch_names']:
-        stim_data = np.zeros((1, len(raw_filt.times)))
+    if ch_name not in meg_data.info['ch_names']:
+        stim_data = np.zeros((1, len(meg_data.times)))
         info_sp = mne.create_info(
-            [ch_name], raw_filt.info['sfreq'], ['stim'])
-        stim_sp = mne.io.RawArray(stim_data, info_sp, verbose=False)
-        raw_filt.add_channels([stim_sp], force_update_info=True)
+            [ch_name], meg_data.info['sfreq'], ['stim'])
+        stim_sp = mne.io.RawArray(stim_data, info_sp)
+        meg_data.add_channels([stim_sp], force_update_info=True)
 
     # Adding events
-    raw_filt.add_events(new_events, stim_channel=ch_name, replace=True)
-    events = mne.find_events(raw_filt, stim_channel=ch_name, verbose=False)
+    meg_data.add_events(new_events, stim_channel=ch_name, replace=True)
+    events = mne.find_events(meg_data, stim_channel=ch_name)
     event_id = {'DET': 1}
     picks = mne.pick_types(
-        raw_filt.info, meg=picks_raw, eeg=False, eog=False)
-    epochs = mne.Epochs(raw_filt, events, event_id, tmin, tmax, baseline=None,
-                        picks=picks, preload=True, verbose=False)
-    del raw_filt, picks, event_id
+        meg_data.info, meg=sensors, eeg=False, eog=False)
+    epochs = mne.Epochs(meg_data, events, event_id, tmin, tmax, baseline=None,
+                        picks=picks, preload=True)
+    del meg_data, picks, event_id
     return epochs
 
 
@@ -151,8 +152,8 @@ class ToTest(TransformerMixin, BaseEstimator):
     def __init__(self) -> None:
         pass
 
-    def fit(self, X, y=None, **fit_params):
+    def fit(self, X, y=None):
         return self
 
-    def transform(self, X, **transform_params):
+    def transform(self, X):
         return [1]

@@ -22,7 +22,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
     def __init__(self, n_components: int = 20):
         self.n_components = n_components
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
         ica.fit(X[1])
@@ -36,8 +36,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         # ica.score_sources(data, score_func=stats.skew)
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA decomposition is done.")
         return X
 
@@ -82,11 +81,10 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         self.run = run
         self.n_runs = n_runs
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         components = X[0]['ica_components'].values
         kurtosis = X[0]['ica_components_kurtosis'].values
         gof = X[0]['ica_components_gof'].values
@@ -151,7 +149,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         self.width = width
         self.n_detections_threshold = n_detections_threshold
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         sources = X[0]["ica_sources"].values
         selected = X[0]["ica_components_selected"].values
 
@@ -208,8 +206,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
         return peaks, props
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA peaks detection is done.")
         return X
 
@@ -230,7 +227,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         self.diff_threshold = diff_threshold
         self.n_cleaned_peaks = n_cleaned_peaks
 
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
 
         # mni_coord = X[0]["ica_peaks_localization"].values
         subcorr = X[0]["ica_peaks_subcorr"].values
@@ -269,7 +266,42 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         X[0]["ica_peaks_selected"][:] = np.int32(mask)
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset,
-                                                        mne.io.Raw]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA peaks cleaning is done.")
+        return X
+
+
+class CropDataAroundPeaks():
+    """Crop data around selected ICA peaks to run AlphaCSC
+
+    Parameters
+    ----------
+    time : float, optional
+        half of the window around the detection, by default 0.5
+    """
+    def __init__(self, time=0.5):
+        self.time = time
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        all_peaks = X[0]["ica_peaks_timestamps"].values
+        selected = np.array(X[0]["ica_peaks_selected"].values,
+                            dtype=bool)
+        timestamps = all_peaks[selected]
+
+        # Add first sample
+        timestamps += X[1].first_samp
+
+        # Create epochs using timestamps
+        epochs = create_epochs(
+            X[1], timestamps, tmin=-self.time, tmax=self.time)
+
+        # Epochs to raw
+        epochs_data = epochs.copy().get_data()
+        tr, ch, times = epochs_data.shape
+        data = epochs_data.transpose(1, 0, 2).reshape(ch, tr*times)
+        X = (X[0], mne.io.RawArray(data, epochs.info))
+        del epochs, data
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.RawArray]:
         return X

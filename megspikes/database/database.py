@@ -352,10 +352,10 @@ class LoadDataset(TransformerMixin, BaseEstimator):
             self.sensors = 1
         self.run = run
 
-    def fit(self, X: Tuple[xr.Dataset, Any], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
         selection = dict(run=self.run, sensors=self.sensors)
         ds = xr.load_dataset(self.dataset)
         return (ds[selection].squeeze(), X[1])
@@ -371,10 +371,10 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             self.sensors = 1
         self.run = run
 
-    def fit(self, X: Tuple[xr.Dataset, Any], y=None, **fit_params):
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
-    def transform(self, X, **transform_params) -> Tuple[xr.Dataset, Any]:
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
         selection = dict(run=self.run, sensors=self.sensors)
         ds = xr.load_dataset(self.dataset)
         # TODO: fix this
