@@ -41,7 +41,7 @@ class Localization():
         self.cov = mne.make_ad_hoc_cov(self.info)
 
 
-class ComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
+class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
         self.setup_fwd(case, sensors)
 
@@ -231,3 +231,26 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         source_ori = forward['source_nn'][np.argmax(Covar)]
         source_pos = forward['source_rr'][np.argmax(Covar)]
         return source_pos, source_ori, subcorr_max
+
+
+class AlphaCSCComponentsLocalization(Localization, BaseEstimator,
+                                     TransformerMixin):
+    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
+        self.setup_fwd(case, sensors)
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        components = X[0]['alphacsc_u_hat'].values[:, :self.n_channels].T
+        evoked = mne.EvokedArray(components, self.info)
+        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
+
+        for n, d in enumerate(dip):
+            pos_mni = mne.head_to_mni(
+                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
+                subjects_dir=self.freesurfer_dir)
+            X[0]['alphacsc_components_localization'][n, :] = pos_mni
+            X[0]['alphacsc_components_gof'][n] = d.gof[0]
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        logging.info("ICA components are localized.")
+        return X

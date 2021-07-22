@@ -7,7 +7,7 @@ import numpy as np
 
 import mne
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.localization.localization import (ComponentsLocalization)
+from megspikes.localization.localization import (ICAComponentsLocalization)
 from megspikes.simulation.simulation import Simulation
 from megspikes.utils import PrepareData
 
@@ -31,7 +31,7 @@ case.select_fif_file(case.run)
 def make_dataset():
     n_ica_comp = 3
     ica_components = xr.DataArray(
-        np.ones((n_ica_comp, 204)),
+        np.random.sample((n_ica_comp, 204)),
         dims=("ica_component", "channels"))
     ica_components_localization = xr.DataArray(
         np.random.sample((n_ica_comp, 3)),
@@ -51,7 +51,7 @@ def test_components_localization(dataset):
     case.prepare_forward_model()
     prep_data = PrepareData(sensors='grad')
     (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
-    cl = ComponentsLocalization(case=case, sensors='grad')
+    cl = ICAComponentsLocalization(case=case, sensors='grad')
     results = cl.fit_transform((ds, raw))
     assert results[0]['ica_components_localization'].any()
     assert results[0]['ica_components_gof'].any()
@@ -61,7 +61,7 @@ def test_components_localization(dataset):
     case.prepare_forward_model(sensors='grad')
     prep_data = PrepareData(sensors='grad')
     (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
-    cl = ComponentsLocalization(case=case)
+    cl = ICAComponentsLocalization(case=case)
     results = cl.fit_transform((ds, raw))
     assert results[0]['ica_components_localization'].any()
     assert results[0]['ica_components_gof'].any()

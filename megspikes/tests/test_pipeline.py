@@ -35,7 +35,7 @@ def test_pipeline():
                   n_atoms=n_atoms)
     db.read_case_info(case.fif_file, case.fwd['ico5'])
     ds = db.make_empty_dataset()
-    ds.to_netcdf(case.dataset)
+    ds.to_netcdf(case.dataset)  # save empty dataset
 
     pipe = make_full_pipeline(case, n_ica_components=n_ica_components,
                               n_ica_peaks=n_ica_peaks, n_atoms=n_atoms)

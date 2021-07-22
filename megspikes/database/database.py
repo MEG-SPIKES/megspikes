@@ -166,12 +166,12 @@ class Database():
         v_hat = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_atoms, n_samples)),
-            dims=("run", "sensors", "atom", "atom_time"),
+            dims=("run", "sensors", "atom", "atom_times"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
                 "atom": np.arange(self.n_atoms),
-                "atom_time": np.linspace(
+                "atom_times": np.linspace(
                     0, self.atom_length, n_samples)
                 },
             name="v_hat")
@@ -192,22 +192,22 @@ class Database():
 
         alphacsc_components_localization = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms, 3)),
-            dims=("run", "sensors", "alphacsc_component", "mni_coordinates"),
+            dims=("run", "sensors", "atom", "mni_coordinates"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
-                "alphacsc_component": np.arange(self.n_atoms),
+                "atom": np.arange(self.n_atoms),
                 "mni_coordinates": np.arange(3)
                 },
             name="alphacsc_components_localization")
 
         alphacsc_components_gof = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms)),
-            dims=("run", "sensors", "alphacsc_component"),
+            dims=("run", "sensors", "atom"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
-                "alphacsc_component": np.arange(self.n_atoms)
+                "atom": np.arange(self.n_atoms)
                 },
             name="alphacsc_components_gof")
 
