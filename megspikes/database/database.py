@@ -55,7 +55,12 @@ class Database():
                 "time": np.linspace(
                     0, self.meg_data_length, n_samples_ica_sources)
                 },
-            name="ica_sources")
+            name="ica_sources",
+            attrs=dict(
+                description="",
+                units="",
+                )
+            )
 
         ica_components = xr.DataArray(
             np.zeros((self.n_sensor_types, self.n_ica_components,
@@ -211,7 +216,7 @@ class Database():
                 },
             name="alphacsc_components_gof")
 
-        # --------- AlphaCSC events detection --------- #
+        # --------- AlphaCSC events alignment and clustering --------- #
 
         alphacsc_detections_timestamps = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
@@ -242,6 +247,16 @@ class Database():
                 "sensors": ['grad', 'mag'],
                 },
             name="alphacsc_detections_atom")
+
+        alphacsc_detections_z_values = xr.DataArray(
+            np.zeros((self.n_runs, self.n_sensor_types,
+                      self.n_detected_peaks)),
+            dims=("run", "sensors", "z_hat_value"),
+            coords={
+                "run": np.arange(self.n_runs),
+                "sensors": ['grad', 'mag'],
+                },
+            name="alphacsc_detections_z_values")
 
         # --------- Clusters library --------- #
 
@@ -317,6 +332,7 @@ class Database():
             "alphacsc_components_gof": alphacsc_components_gof,
             "alphacsc_detections_timestamps": alphacsc_detections_timestamps,
             "alphacsc_detections_atom": alphacsc_detections_atom,
+            "alphacsc_detections_z_values": alphacsc_detections_z_values,
             "alphacsc_detections_goodness": alphacsc_detections_goodness,
             "alphacsc_components_selected": alphacsc_components_selected,
             "clusters_library_timestamps": clusters_library_timestamps,

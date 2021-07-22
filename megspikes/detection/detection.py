@@ -1,21 +1,20 @@
-from typing import Union, List, Tuple, Dict
-import warnings
 import logging
-
-import numpy as np
-from scipy import signal, stats
-from sklearn.cluster import KMeans
-from sklearn import preprocessing
-from sklearn.base import BaseEstimator, TransformerMixin
-
-import xarray as xr
+import warnings
+from typing import Dict, Tuple, Union
 
 import mne
-mne.set_log_level("ERROR")
-
+import numpy as np
+import xarray as xr
 from alphacsc import GreedyCDL
 from alphacsc.utils.signal import split_signal
+from scipy import signal, stats
+from sklearn import preprocessing
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.cluster import KMeans
+
 from ..utils import create_epochs
+
+mne.set_log_level("ERROR")
 
 
 class DecompositionICA(TransformerMixin, BaseEstimator):
@@ -354,6 +353,253 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
 
         del data, data_split, cdl
         return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
+                                                      mne.io.RawArray]]:
+        return X
+
+
+class SelectAlphacscEvents():
+    def __init__(self,
+                 sensors: str = 'grad',
+                 n_atoms: int = 3,
+                 epoch_width_samples: int = 201,
+                 sfreq: float = 200.,
+                 z_hat_threshold: float = 3.,  # MAD
+                 z_hat_threshold_min: float = 1.5,  # MAD
+                 window_border: int = 10,  # samples
+                 min_n_events: int = 15,
+                 atoms_selection_gof: float = 80.,  # FIXME: 0.80
+                 allow_lower_gof_grad: float = 20.,  # FIXME: 0.20
+                 atoms_selection_n_events: int = 10,
+                 cross_corr_threshold: float = 0.85,
+                 atoms_selection_min_events: int = 0):
+        """Select best events for the atom
+
+        Parameters
+        ----------
+        epoch_width_samples : int, optional
+            epochs width in samples, by default 201.
+        sfreq : int, optional
+            downsample freq, by default 200.
+        z_hat_threshold : int, optional
+            threshold for z-hat values in MAD, by default 3
+        atoms_selection_gof : int, optional
+            GOF value threshold, by default 80
+        atoms_selection_n_events : int, optional
+            n events threshold, by default 10
+        cross_corr_threshold : float, optional
+            cross-correlation on the max channel
+            threshold, by default 0.85
+        window_border : int, optional
+            border of the window to search z-hat peaks,
+            by default 10 samples (50 ms) FIXME: samples to ms
+        """
+        self.sensors = sensors
+        self.n_atoms = n_atoms
+        self.epoch_width_samples = epoch_width_samples
+        self.sfreq = sfreq
+        self.z_hat_threshold = z_hat_threshold
+        self.z_hat_threshold_min = z_hat_threshold_min
+        self.min_n_events = min_n_events
+        self.atoms_selection_gof = atoms_selection_gof
+        self.allow_lower_gof_grad = allow_lower_gof_grad
+        self.atoms_selection_n_events = atoms_selection_n_events
+        self.cross_corr_threshold = cross_corr_threshold
+        self.window_border = window_border
+        self.atoms_selection_min_events = atoms_selection_min_events
+
+    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
+            y=None):
+        n_channels = len(mne.pick_types(X[1].info, meg=True))
+        self.v_hat = X[0]["alphacsc_v_hat"].values
+        self.u_hat = X[0]["alphacsc_u_hat"][:, :n_channels].values
+        self.z_hat = X[0]["alphacsc_z_hat"].values
+        self.atoms_gof = X[0]["alphacsc_components_gof"].values
+        ica_peaks = X[0]["ica_peaks_timestamps"].values
+        ica_peaks_selected = np.array(
+            X[0]["ica_peaks_selected"].values, dtype=bool)
+        self.n_ica_peaks = sum(ica_peaks_selected)
+
+        # Repeat for each atom
+        for atom in range(self.n_atoms):
+            n_events = 0
+            z_hat_threshold = self.z_hat_threshold
+
+            # decrease z-hat threshold until at least min_n_events events
+            # selected
+            while n_events < self.min_n_events:
+                # select atom's best events according to z-hat
+                (alignment, z_values, max_ch, selected_events, events) =\
+                    self.find_max_z(atom, self.z_hat_threshold)
+
+                n_events = np.sum(selected_events)
+
+                # continue with lower z_hat_threshold if not enough events
+                if n_events < self.min_n_events:
+                    z_hat_threshold -= 0.2
+
+                # stop if z-hat is too low
+                if z_hat_threshold < self.z_hat_threshold_min:
+                    break
+
+            if n_events > self.atoms_selection_min_events:
+                # make epochs only with best events for this atom
+                epochs = create_epochs(
+                   X[1], events[selected_events], tmin=-0.25, tmax=0.25)
+
+                # Estimate goodness of the atom
+                goodness = self.atom_goodness(
+                   atom, selected_events, epochs, max_ch)
+
+                # Align ICA peaks using z-hat
+                mask = np.where(ica_peaks_selected)[0][selected_events]
+                X[0]["alphacsc_detections_timestamps"][mask] = (
+                    ica_peaks[mask] + alignment[selected_events])
+                X[0]["alphacsc_detections_atom"][mask] = [atom]*len(mask)
+                X[0]["alphacsc_detections_z_values"][
+                    mask] = z_values[selected_events]
+                X[0]["alphacsc_detections_goodness"][
+                    mask] = [goodness]*len(mask)
+        return self
+
+    def find_max_z(self, atom: int, z_threshold: float):
+        """find events with large z-peak before ICA peak
+
+        One ICA peak:
+        -0.5s---window_border---z_max---window_border---ICA peak--...--0.5s
+        The same sketch in samples:
+        0-10-----z_max-----90-100-----------------------201
+        The same sketch in milliseconds:
+        0-50-----z_max----450-500----------------------1001
+
+        z_max - z_hat peak before ICA detections in the cropped raw data
+
+        Parameters
+        ----------
+        atom : int
+            AlphaCSC atom index
+        z_threshold : float, optional
+            threshold for z-hat values in MAD, by default 3
+        Returns
+        -------
+        array_like, int [alignment]
+            time to add to the ICA peaks (alignment to z_max);
+        array_like, float [z_values]
+            z_hat values in MAD;
+        int [np.argmax(u_k)]
+            max channel from u_hat
+        array_like, bool [selected_events]
+            events selected in the ICA peaks array
+        array_like, np.int32 [events]
+            timepoints of the selected events in the raw_cropped
+        """
+
+        window_border = int(self.window_border)
+        half_event = self.epoch_width_samples // 2
+        event_width = self.epoch_width_samples
+
+        # timepoints of events in the raw cropped around ICA peaks
+        events = [half_event + i*event_width for i in range(self.n_ica_peaks)]
+        events = np.array(events)
+
+        # load atoms properties
+        z_k = self.z_hat[atom]
+        u_k = self.u_hat[atom]
+        v_k = self.v_hat[atom]
+
+        # Reshape z_hat to (n_evets, event_width)
+        z_events = np.array(
+            [z_k[int(ev-half_event):int(ev+half_event)] for ev in events])
+
+        alignment = np.zeros(self.n_ica_peaks)
+        z_values = np.zeros(self.n_ica_peaks)
+        selected = np.zeros(self.n_ica_peaks, dtype=np.bool)
+
+        # estimate z-hat threshold
+        z_mad = stats.median_absolute_deviation(z_k[z_k > 0])
+        threshold = np.median(z_k[z_k > 0]) + z_mad*z_threshold
+
+        for n, event in enumerate(z_events):
+            # z_peak: max z-hat in the window
+            z_in_window = event[window_border:half_event-window_border]
+            z_peak = np.argmax(z_in_window)
+            # value of the max z-hat
+
+            z_max_value = event[z_peak + window_border]
+
+            if z_max_value > threshold:
+                # alignment of the ICA detections to the z-hat max peak
+                # alignment to the center of the atom
+                # max z-hat is at the beginning of v_hat but spike is later
+                z_values[n] = z_max_value
+                z_peak += window_border + len(v_k)//2
+                alignment[n] = z_peak - half_event
+                selected[n] = True
+
+        # align events to the z-hat peak
+        events += np.int32(alignment)
+        return alignment, z_values, np.argmax(u_k), selected, events
+
+    def atom_goodness(self, atom: int, selected_events: np.ndarray,
+                      epochs: mne.Epochs, max_ch: int):
+        """Evaluate atom quality
+
+        Parameters
+        ----------
+        atom : int
+            AlphaCSC atom index
+        selected_events : array_like, bool
+            bool array of the selected ICA peaks for this atom
+        epochs : mne.Epochs
+            epochs of the selected events
+        max_ch : int
+            max channel from the u_hat
+
+        Returns
+        -------
+        float
+            goodness value between 0 and 1
+        """
+        # First condition: absolute number of the events
+        n_events = np.sum(selected_events)
+        cond1 = self.atoms_selection_n_events - n_events
+        if cond1 < 0:
+            cond1 = 1
+        else:
+            cond1 = n_events / self.atoms_selection_n_events
+
+        # Second condition: atoms localization GOF
+        atoms_gof = self.atoms_gof[atom]
+        if isinstance(self.sensors, str):
+            # Allow lower GOF for grad
+            if self.sensors == 'grad':
+                atoms_gof -= self.allow_lower_gof_grad
+        cond2 = self.atoms_selection_gof - atoms_gof
+        if cond2 < 0:
+            cond2 = 1
+        else:
+            cond2 = self.atoms_gof[atom] / self.atoms_selection_gof
+
+        # Third condition: v_hat and max channel pattern similarity
+        # cross-correlation epochs' max channel with atom's
+        # shape inside core events
+        max_ch_waveforms = epochs.get_data()[:, max_ch, :]
+        cross_corr = np.zeros(max_ch_waveforms.shape[0])
+        for i, spike in enumerate(max_ch_waveforms):
+            a = spike/np.linalg.norm(spike)
+            a = np.abs(a)
+            v = self.v_hat[atom]/np.linalg.norm(self.v_hat[atom])
+            v = np.abs(v)
+            cross_corr[i] = np.correlate(a, v).mean()
+
+        mean_cc = np.median(cross_corr)
+        cond3 = self.cross_corr_threshold - mean_cc
+        if cond3 < 0:
+            cond3 = 1
+        else:
+            cond3 = mean_cc / self.cross_corr_threshold
+        return (cond1 + cond2 + cond3) / 3
 
     def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
                                                       mne.io.RawArray]]:

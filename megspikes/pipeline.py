@@ -6,7 +6,8 @@ from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            CropDataAroundPeaks,
                                            DecompositionAlphaCSC,
-                                           DecompositionICA, PeakDetection)
+                                           DecompositionICA, PeakDetection,
+                                           SelectAlphacscEvents)
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ICAComponentsLocalization,
     PeakLocalization)
@@ -14,8 +15,9 @@ from megspikes.utils import PrepareData, ToTest
 
 
 def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
-                       n_ica_peaks: int = 2000, n_cleaned_peaks: int = 300,
-                       n_atoms=3):
+                       resample: float = 200., n_ica_peaks: int = 2000,
+                       n_cleaned_peaks: int = 300, n_atoms=3,
+                       z_hat_threshold=3., z_hat_threshold_min=1.5):
     pipe_sensors = []
     pipe_runs = []
 
@@ -24,7 +26,8 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
             pipe_runs.append(
                 (f'run_{run}',
                  Pipeline([
-                    ('prepare_data', PrepareData(sensors=sens, resample=200.)),
+                    ('prepare_data',
+                     PrepareData(sensors=sens, resample=resample)),
                     ('load_select_dataset',
                      LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('select_ica_components', ComponentsSelection(run=run)),
@@ -37,9 +40,15 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
                      CleanDetections(n_cleaned_peaks=n_cleaned_peaks)),
                     ('crop_data', CropDataAroundPeaks()),
                     ('alphacsc_decomposition',
-                     DecompositionAlphaCSC(n_atoms=n_atoms)),
+                     DecompositionAlphaCSC(n_atoms=n_atoms, sfreq=resample)),
                     ('alphacsc_components_localization',
                      AlphaCSCComponentsLocalization(case=case, sensors=sens)),
+                    ('alphacsc_events_selection',
+                     SelectAlphacscEvents(
+                         sensors=sens, n_atoms=n_atoms,
+                         z_hat_threshold=z_hat_threshold,
+                         z_hat_threshold_min=z_hat_threshold_min,
+                         sfreq=resample)),
                     ('save_dataset',
                      SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('test', ToTest())
