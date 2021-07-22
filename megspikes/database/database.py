@@ -19,7 +19,7 @@ class Database():
                  n_atoms: int = 3,
                  n_detected_peaks: int = 2000,
                  n_cleaned_peaks: int = 300,
-                 atom_length: int = 1000,
+                 atom_length: float = 0.5,  # seconds
                  n_clusters_library: int = 1,
                  n_clusters_library_timepoints: int = 0,
                  n_times_cluster_epoch: int = 1000):
@@ -162,7 +162,7 @@ class Database():
                 },
             name="u_hat")
 
-        n_samples = np.int32(self.atom_length / 1000 * self.sfreq2)
+        n_samples = np.int32(self.atom_length * self.sfreq2)
         v_hat = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_atoms, n_samples)),

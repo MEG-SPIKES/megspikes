@@ -1,4 +1,4 @@
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Dict
 import warnings
 import logging
 
@@ -271,7 +271,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         return X
 
 
-class CropDataAroundPeaks():
+class CropDataAroundPeaks(TransformerMixin, BaseEstimator):
     """Crop data around selected ICA peaks to run AlphaCSC
 
     Parameters
@@ -304,4 +304,57 @@ class CropDataAroundPeaks():
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.RawArray]:
+        return X
+
+
+class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
+    def __init__(self, n_atoms: int = 3, atoms_width: float = 0.5,
+                 sfreq: float = 200., greedy_cdl_kwarg: Dict = {
+                     "rank1": True,
+                     "uv_constraint": "separate",
+                     "window": True,
+                     "unbiased_z_hat": True,
+                     "D_init": "chunk",
+                     "lmbd_max": "scaled",
+                     "reg": 0.1,
+                     "n_iter": 100,
+                     "eps": 1e-4,
+                     "solver_z": "lgcd",
+                     "solver_z_kwargs": {"tol": 1e-3, "max_iter": 100000},
+                     "solver_d": "alternate_adaptive",
+                     "solver_d_kwargs": {"max_iter": 300},
+                     "sort_atoms": True,
+                     "verbose": 0,
+                     "random_state": 0},
+                 split_signal_kwarg: Dict = {
+                     "n_splits": 5,
+                     "apply_window": True},
+                 n_jobs: int = 1):
+        self.n_atoms = n_atoms
+        self.sfreq = sfreq
+        self.atoms_width = atoms_width
+        self.n_jobs = n_jobs
+        self.greedy_cdl_kwarg = greedy_cdl_kwarg
+        self.split_signal_kwarg = split_signal_kwarg
+        self.n_times_atom = int(round(self.sfreq * self.atoms_width))
+
+    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
+            y=None):
+        data = X[1].get_data(picks='meg')
+        data_split = split_signal(data, **self.split_signal_kwarg)
+        cdl = GreedyCDL(n_atoms=self.n_atoms, n_times_atom=self.n_times_atom,
+                        n_jobs=self.n_jobs, **self.greedy_cdl_kwarg)
+        cdl.fit(data_split)
+        z_hat = cdl.transform(data[None, :])[0]
+        _, times = z_hat.shape
+        _, ch = cdl.u_hat_.shape
+        X[0]["alphacsc_z_hat"][:, :times] = z_hat
+        X[0]["alphacsc_v_hat"][:, :] = cdl.v_hat_
+        X[0]["alphacsc_u_hat"][:, :ch] = cdl.u_hat_
+
+        del data, data_split, cdl
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
+                                                      mne.io.RawArray]]:
         return X

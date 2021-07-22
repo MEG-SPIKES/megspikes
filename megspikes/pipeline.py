@@ -5,14 +5,16 @@ from megspikes.database.database import LoadDataset, SaveDataset
 from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            CropDataAroundPeaks,
-                                           DecompositionICA, PeakDetection)
+                                           DecompositionICA, PeakDetection,
+                                           DecompositionAlphaCSC)
 from megspikes.localization.localization import (ComponentsLocalization,
                                                  PeakLocalization)
 from megspikes.utils import PrepareData, ToTest
 
 
 def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
-                       n_ica_peaks: int = 2000, n_cleaned_peaks: int = 300):
+                       n_ica_peaks: int = 2000, n_cleaned_peaks: int = 300,
+                       n_atoms=3):
     pipe_sensors = []
     pipe_runs = []
 
@@ -33,6 +35,8 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
                     ('peaks_cleaning',
                      CleanDetections(n_cleaned_peaks=n_cleaned_peaks)),
                     ('crop_data', CropDataAroundPeaks()),
+                    ('alphacsc_decomposition',
+                     DecompositionAlphaCSC(n_atoms=n_atoms)),
                     ('save_dataset',
                      SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('test', ToTest())
