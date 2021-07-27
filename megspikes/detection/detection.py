@@ -1,6 +1,7 @@
 import logging
+from pathlib import Path
 import warnings
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, Any
 
 import mne
 import numpy as np
@@ -604,3 +605,131 @@ class SelectAlphacscEvents():
     def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
                                                       mne.io.RawArray]]:
         return X
+
+
+class ClustersMerging():
+    """ Merge atoms from all runs into one atom's library:
+        - Estimate atom's goodness threshold. Goodness represents
+            cross-correlation of events inside the atom, number of
+            the events and atom's u_hat gof
+        - Estimate similarity between atoms using u_hat and v_hat.
+            Merge atoms if similarity is higher 0.8.
+        - Clean repetitions (detections in 10 ms window)
+    """
+    def __init__(self, dataset: Union[str, Path],
+                 abs_goodness_threshold: float = 0.9,
+                 max_corr: float = 0.8):
+        self.dataset = dataset
+        self.abs_goodness_threshold = abs_goodness_threshold
+        self.max_corr = max_corr
+
+    def fit(self, X: Any, y=None):
+        X = xr.load_dataset(self.dataset)
+        goodness_threshold = self._find_goodness_threshold(X)
+
+        timestamps = X["alphacsc_detections_timestamps"].values
+        atoms = X["alphacsc_detections_atom"].values
+        goodness = X["alphacsc_detections_goodness"].values
+
+        all_runs = X.run.values
+        sensors = X.sensors.values
+
+        atoms_lib_timestamps = []
+        atoms_lib_atom = []
+        atoms_lib_sensors = []
+        atoms_lib_run = []
+
+        goodness_threshold = 0.5
+
+        u_hats = X["alphacsc_u_hat"].values
+        v_hats = X["alphacsc_v_hat"].values
+
+        for sens, sens_name in enumerate(sensors):
+            n_channels = X["alphacsc_u_hat"].attrs[f"n_{sens_name}"]
+            all_u = []
+            all_v = []
+            for run in all_runs:
+                selected = timestamps[run, sens, :] != 0
+                for atom in np.int32(np.unique(atoms[run, sens, selected])):
+                    selected_atom = atoms[run, sens, selected] == atom
+                    goodness_atom = goodness[run, sens, selected][
+                        selected_atom]
+                    assert len(np.unique(goodness_atom)) == 1
+                    cond1 = goodness_atom[0] > goodness_threshold
+
+                    u_atom = u_hats[run, sens, atom, :n_channels]
+                    v_atom = v_hats[run, sens, atom, :]
+
+                    cond2 = self._atoms_corrs_condition(
+                        u_atom, v_atom, all_u, all_v, 0.5)
+                    if cond1 & cond2:
+                        atoms_lib_timestamps += timestamps[
+                            run, sens, selected][selected_atom].tolist()
+                        atoms_lib_atom += [atom]*sum(selected_atom)
+                        atoms_lib_sensors += [sens]*sum(selected_atom)
+                        atoms_lib_run += [run]*sum(selected_atom)
+                        all_u.append(u_atom)
+                        all_v.append(v_atom)
+
+        assert len(atoms_lib_timestamps) > 0
+
+        atoms_lib_timestamps = np.array(atoms_lib_timestamps)
+        atoms_lib_atom = np.array(atoms_lib_atom)
+        atoms_lib_sensors = np.array(atoms_lib_sensors)
+        atoms_lib_run = np.array(atoms_lib_run)
+
+        # clean repetitions
+        sort_unique_ind = np.unique(np.round(atoms_lib_timestamps/10),
+                                    return_index=True)[1]
+
+        atoms_lib_atom = atoms_lib_atom[sort_unique_ind]
+        atoms_lib_sensors = atoms_lib_sensors[sort_unique_ind]
+        atoms_lib_run = atoms_lib_run[sort_unique_ind]
+        atoms_lib_timestamps = atoms_lib_timestamps[sort_unique_ind]
+        n_det = X["clusters_library_timestamps"].values.shape[0]
+
+        if n_det > atoms_lib_atom.shape[0]:
+            n_det = atoms_lib_atom.shape[0]
+
+        X["clusters_library_timestamps"][:n_det] = atoms_lib_atom[:n_det]
+        X["clusters_library_atom"][:n_det] = atoms_lib_sensors[:n_det]
+        X["clusters_library_sensors"][:n_det] = atoms_lib_run[:n_det]
+        X["clusters_library_run"][:n_det] = atoms_lib_timestamps[:n_det]
+
+        # save resuts directly to dataset
+        X.to_netcdf(self.dataset, mode='a', format="NETCDF4", engine="netcdf4")
+        return self
+
+    def transform(self, X: xr.Dataset) -> xr.Dataset:
+        return X
+
+    def _find_goodness_threshold(self, ds):
+        goodness = ds["alphacsc_detections_goodness"].values.flatten()
+        # Atoms' goodness
+        # unique because goodness is repeated for each timestamp
+        goodness = np.unique(goodness[goodness != 0])
+        mean_goodness = np.mean(goodness) / len(goodness)
+        std_goodness = np.std(goodness) / len(goodness)
+
+        # FIXME: avoid situation when threshold is too high
+        goodness_threshold = mean_goodness + std_goodness
+        if goodness_threshold > self.abs_goodness_threshold:
+            goodness_threshold = self.abs_goodness_threshold
+        return goodness_threshold
+
+    def _atoms_corrs_condition(self, u_atom, v_atom, all_u, all_v):
+        # Avoid repetitions
+        # TODO: here could be more intelligent merging step
+        # IDEA: 'good' repetitions are admissible
+        if (len(all_u) > 0) & (len(all_v) > 0):
+            u_corrs = np.array(
+                [np.correlate(u, u_atom) for u in np.vstack(all_u)])
+            v_corrs = np.array(
+                [np.correlate(v, v_atom) for v in np.vstack(all_v)])
+
+            for u_c, v_c in zip(u_corrs, v_corrs):
+                if (u_c > self.max_corr) & (v_c > self.max_corr):
+                    return False
+            return True
+        else:
+            return True

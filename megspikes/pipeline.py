@@ -7,11 +7,12 @@ from megspikes.detection.detection import (CleanDetections,
                                            CropDataAroundPeaks,
                                            DecompositionAlphaCSC,
                                            DecompositionICA, PeakDetection,
-                                           SelectAlphacscEvents)
+                                           SelectAlphacscEvents,
+                                           ClustersMerging)
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ICAComponentsLocalization,
     PeakLocalization)
-from megspikes.utils import PrepareData, ToTest
+from megspikes.utils import PrepareData, ToFinish
 
 
 def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
@@ -51,7 +52,7 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
                          sfreq=resample)),
                     ('save_dataset',
                      SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
-                    ('test', ToTest())
+                    ('test', ToFinish())
                     ])))
         pipe_sensors.append(
             (sens,
@@ -70,5 +71,6 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
                 ])))
         pipe_runs = []
     pipe = Pipeline([
-        ('make_clusters_library',  FeatureUnion(pipe_sensors))])
+        ('extract_all_atoms',  FeatureUnion(pipe_sensors)),
+        ('make_clusters_library', ClustersMerging(dataset=case.dataset))])
     return pipe

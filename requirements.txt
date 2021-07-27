@@ -10,3 +10,4 @@ scikit-learn
 scipy
 xlrd
 xarray
+netCDF4

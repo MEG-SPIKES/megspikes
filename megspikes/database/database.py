@@ -21,7 +21,7 @@ class Database():
                  n_cleaned_peaks: int = 300,
                  atom_length: float = 0.5,  # seconds
                  n_clusters_library: int = 1,
-                 n_clusters_library_timepoints: int = 0,
+                 n_clusters_library_timepoints: int = 2000,
                  n_times_cluster_epoch: int = 1000,
                  n_channels_grad: int = 204,
                  n_channels_mag: int = 102):

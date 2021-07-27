@@ -148,7 +148,7 @@ def onset_slope_timepoints(label_ts, n_times=3):
     return slope_times
 
 
-class ToTest(TransformerMixin, BaseEstimator):
+class ToFinish(TransformerMixin, BaseEstimator):
     def __init__(self) -> None:
         pass
 
@@ -156,4 +156,5 @@ class ToTest(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X):
-        return [1]
+        del X
+        return []
