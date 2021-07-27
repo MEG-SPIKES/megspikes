@@ -22,7 +22,9 @@ class Database():
                  atom_length: float = 0.5,  # seconds
                  n_clusters_library: int = 1,
                  n_clusters_library_timepoints: int = 0,
-                 n_times_cluster_epoch: int = 1000):
+                 n_times_cluster_epoch: int = 1000,
+                 n_channels_grad: int = 204,
+                 n_channels_mag: int = 102):
         self.meg_data_length = meg_data_length
         self.n_fwd_sources = n_fwd_sources
         self.n_sensor_types = n_sensor_types
@@ -39,6 +41,8 @@ class Database():
         self.n_clusters_library = n_clusters_library
         self.n_clusters_library_timepoints = n_clusters_library_timepoints
         self.n_times_cluster_epoch = n_times_cluster_epoch
+        self.n_channels_grad = n_channels_grad
+        self.n_channels_mag = n_channels_mag
 
     def make_empty_dataset(self) -> xr.Dataset:
         # --------- ICA decomposition --------- #
@@ -80,6 +84,9 @@ class Database():
                 "ica_component": np.arange(self.n_ica_components),
                 "mni_coordinates": np.arange(3)
                 },
+            attrs={
+                "n_grad": self.n_channels_grad,
+                "n_mag": self.n_channels_mag},
             name="ica_components_localization")
 
         ica_components_gof = xr.DataArray(
@@ -165,6 +172,9 @@ class Database():
                 "sensors": ['grad', 'mag'],
                 "atom": np.arange(self.n_atoms),
                 },
+            attrs={
+                "n_grad": self.n_channels_grad,
+                "n_mag": self.n_channels_mag},
             name="u_hat")
 
         n_samples = np.int32(self.atom_length * self.sfreq2)
@@ -349,6 +359,9 @@ class Database():
         if not Path(fif_file_path).is_file():
             raise RuntimeError("Fif file was not found")
         fif_file = mne.io.read_raw_fif(fif_file_path, preload=False)
+        info = fif_file.info
+        self.n_channels_grad = len(mne.pick_types(info, meg='grad'))
+        self.n_channels_mag = len(mne.pick_types(info, meg='mag'))
         self.meg_data_length = fif_file.n_times
         self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
         del fif_file, fwd
