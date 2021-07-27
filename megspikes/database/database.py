@@ -127,6 +127,7 @@ class Database():
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="ica_peaks_timestamps")
 
@@ -137,6 +138,7 @@ class Database():
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks),
                 "mni_coordinates": np.arange(3)
                 },
             name="ica_peaks_localization")
@@ -144,20 +146,22 @@ class Database():
         ica_peaks_subcorr = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "subcorr"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="ica_peaks_subcorr")
 
         ica_peaks_selected = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "selected_peaks"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="ica_peaks_selected")
 
@@ -231,40 +235,44 @@ class Database():
         alphacsc_detections_timestamps = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "alphacsc_timestamps"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="alphacsc_detections_timestamps")
 
         alphacsc_detections_goodness = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "detections_goodness"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="alphacsc_detections_goodness")
 
         alphacsc_detections_atom = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "detections_atom"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="alphacsc_detections_atom")
 
         alphacsc_detections_z_values = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_detected_peaks)),
-            dims=("run", "sensors", "z_hat_value"),
+            dims=("run", "sensors", "ica_timestamps"),
             coords={
                 "run": np.arange(self.n_runs),
                 "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             name="alphacsc_detections_z_values")
 
@@ -282,22 +290,38 @@ class Database():
 
         clusters_library_timestamps = xr.DataArray(
             np.zeros(self.n_clusters_library_timepoints),
-            dims=("cluster_library_timestamps"),
+            dims=("clusters_library_detections"),
+            coords={
+                "clusters_library_detections": np.arange(
+                    self.n_clusters_library_timepoints)
+                },
             name="clusters_library_timestamps")
 
         clusters_library_atom = xr.DataArray(
             np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_atom"),
+            dims=("clusters_library_detections"),
+            coords={
+                "clusters_library_detections": np.arange(
+                    self.n_clusters_library_timepoints)
+                },
             name="clusters_library_atom")
 
         clusters_library_sensors = xr.DataArray(
             np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_sensors"),
+            dims=("clusters_library_detections"),
+            coords={
+                "clusters_library_detections": np.arange(
+                    self.n_clusters_library_timepoints)
+                },
             name="clusters_library_sensors")
 
         clusters_library_run = xr.DataArray(
             np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_run"),
+            dims=("clusters_library_detections"),
+            coords={
+                "clusters_library_detections": np.arange(
+                    self.n_clusters_library_timepoints)
+                },
             name="clusters_library_run")
 
         n_samples = np.int32(self.n_times_cluster_epoch / 1000 * self.sfreq1)

@@ -661,7 +661,7 @@ class ClustersMerging():
                     v_atom = v_hats[run, sens, atom, :]
 
                     cond2 = self._atoms_corrs_condition(
-                        u_atom, v_atom, all_u, all_v, 0.5)
+                        u_atom, v_atom, all_u, all_v)
                     if cond1 & cond2:
                         atoms_lib_timestamps += timestamps[
                             run, sens, selected][selected_atom].tolist()
