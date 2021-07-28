@@ -20,7 +20,6 @@ class Database():
                  n_detected_peaks: int = 2000,
                  n_cleaned_peaks: int = 300,
                  atom_length: float = 0.5,  # seconds
-                 n_clusters_library: int = 1,
                  n_clusters_library_timepoints: int = 2000,
                  n_times_cluster_epoch: int = 1000,
                  n_channels_grad: int = 204,
@@ -38,7 +37,6 @@ class Database():
         self.n_detected_peaks = n_detected_peaks
         self.n_cleaned_peaks = n_cleaned_peaks
         self.atom_length = atom_length  # ms
-        self.n_clusters_library = n_clusters_library
         self.n_clusters_library_timepoints = n_clusters_library_timepoints
         self.n_times_cluster_epoch = n_times_cluster_epoch
         self.n_channels_grad = n_channels_grad
@@ -278,16 +276,6 @@ class Database():
 
         # --------- Clusters library --------- #
 
-        alphacsc_components_selected = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms)),
-            dims=("run", "sensors", "alphacsc_selected"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "alphacsc_selected": np.arange(self.n_atoms)
-                },
-            name="alphacsc_components_selected")
-
         clusters_library_timestamps = xr.DataArray(
             np.zeros(self.n_clusters_library_timepoints),
             dims=("clusters_library_detections"),
@@ -324,17 +312,14 @@ class Database():
                 },
             name="clusters_library_run")
 
-        n_samples = np.int32(self.n_times_cluster_epoch / 1000 * self.sfreq1)
-        clusters_mne_localization = xr.DataArray(
-            np.zeros((self.n_clusters_library, self.n_fwd_sources,
-                      self.n_times_cluster_epoch)),
-            dims=("cluster", "fwd_source", "epoch_times"),
+        clusters_library_cluster_id = xr.DataArray(
+            np.zeros(self.n_clusters_library_timepoints),
+            dims=("clusters_library_detections"),
             coords={
-                "cluster": np.arange(self.n_clusters_library),
-                "epoch_times": np.linspace(
-                    0, self.n_times_cluster_epoch, n_samples)
+                "clusters_library_detections": np.arange(
+                    self.n_clusters_library_timepoints)
                 },
-            name="clusters_library_mne_localization")
+            name="clusters_library_cluster_id")
 
         # --------- Irritative zone prediction --------- #
 
@@ -368,12 +353,11 @@ class Database():
             "alphacsc_detections_atom": alphacsc_detections_atom,
             "alphacsc_detections_z_values": alphacsc_detections_z_values,
             "alphacsc_detections_goodness": alphacsc_detections_goodness,
-            "alphacsc_components_selected": alphacsc_components_selected,
             "clusters_library_timestamps": clusters_library_timestamps,
             "clusters_library_atom": clusters_library_atom,
             "clusters_library_sensors": clusters_library_sensors,
             "clusters_library_run": clusters_library_run,
-            "clusters_mne_localization": clusters_mne_localization,
+            "clusters_library_cluster_id": clusters_library_cluster_id,
             "iz_predictions": iz_predictions
             })
         return ds
@@ -441,5 +425,17 @@ class SaveDataset(TransformerMixin, BaseEstimator):
                 ds[selection][key][:, :, :] = X[0][key]
         ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                      engine="netcdf4")
-        # ds.to_netcdf(self.dataset)
+        return X
+
+
+class SaveFullDataset(TransformerMixin, BaseEstimator):
+    def __init__(self, dataset: Union[str, Path]) -> None:
+        self.dataset = dataset
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                       engine="netcdf4")
         return X

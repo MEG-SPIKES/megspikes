@@ -1,7 +1,8 @@
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.database.database import LoadDataset, SaveDataset
+from megspikes.database.database import (LoadDataset, SaveDataset,
+                                         SaveFullDataset)
 from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            CropDataAroundPeaks,
@@ -11,7 +12,7 @@ from megspikes.detection.detection import (CleanDetections,
                                            ClustersMerging)
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ICAComponentsLocalization,
-    PeakLocalization)
+    PeakLocalization, ClustersLocalization)
 from megspikes.utils import PrepareData, ToFinish
 
 
@@ -72,5 +73,12 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
         pipe_runs = []
     pipe = Pipeline([
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),
-        ('make_clusters_library', ClustersMerging(dataset=case.dataset))])
+        ('make_clusters_library', ClustersMerging(dataset=case.dataset)),
+        ('prepare_data', PrepareData(data_file=case.fif_file, sensors=True)),
+        ('localize_clusters', ClustersLocalization(
+            case=case,
+            db_name_detections='clusters_library_timestamps',
+            db_name_clusters='clusters_library_cluster_id',
+            detection_sfreq=resample)),
+        ('save_dataset', SaveFullDataset(dataset=case.dataset))])
     return pipe

@@ -132,19 +132,29 @@ def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
     return epochs
 
 
-def onset_slope_timepoints(label_ts, n_times=3):
-    """ Find point for plotting on the rising slope
+def onset_slope_timepoints(label_ts: np.ndarray,
+                           n_points: int = 3,
+                           sigma: float = 3,
+                           peaks_width: float = 20,
+                           peaks_rel_hight: float = 0.6
+                           ) -> np.ndarray:
+    """ Find the peak of the spike, 50% and 20% of the slope.
     """
-    slope = gaussian_filter(label_ts[0].mean(axis=0), sigma=3)
-    peaks, properties = signal.find_peaks(slope, width=20)  # , wlen=100
-    widths_full = signal.peak_widths(slope, peaks, rel_height=0.6)
+    # Smooth lables timeseries
+    slope = gaussian_filter(label_ts[0].mean(axis=0), sigma=sigma)
+    # Find all peaks TODO:, wlen=100
+    peaks, properties = signal.find_peaks(slope, width=peaks_width)
+    assert len(peaks) > 0, "No peaks detected"
+    # Find widths of the peaks using relative hight
+    widths_full = signal.peak_widths(slope, peaks, rel_height=peaks_rel_hight)
+    # Sort peaks by prominences
     peak_ind = np.argmax(properties['prominences'].flatten())
     # slope_beginig = properties['left_bases'][peak_ind]
     peak_width = widths_full[0][peak_ind]
     peak = peaks[peak_ind]
-    # if left base is too far use 100
+    # if left base is too far use 100 samples
     slope_left_base = max(peak - peak_width / 2, peak-100)
-    slope_times = np.linspace(max(2, slope_left_base), peak, n_times)
+    slope_times = np.linspace(max(2, slope_left_base), peak, n_points)
     return slope_times
 
 

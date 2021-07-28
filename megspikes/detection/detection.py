@@ -638,12 +638,14 @@ class ClustersMerging():
         atoms_lib_atom = []
         atoms_lib_sensors = []
         atoms_lib_run = []
+        atoms_lib_cluster_id = []
 
         goodness_threshold = 0.5
 
         u_hats = X["alphacsc_u_hat"].values
         v_hats = X["alphacsc_v_hat"].values
 
+        cluster_id = 0
         for sens, sens_name in enumerate(sensors):
             n_channels = X["alphacsc_u_hat"].attrs[f"n_{sens_name}"]
             all_u = []
@@ -668,8 +670,11 @@ class ClustersMerging():
                         atoms_lib_atom += [atom]*sum(selected_atom)
                         atoms_lib_sensors += [sens]*sum(selected_atom)
                         atoms_lib_run += [run]*sum(selected_atom)
+                        atoms_lib_cluster_id += [
+                            cluster_id]*sum(selected_atom)
                         all_u.append(u_atom)
                         all_v.append(v_atom)
+                        cluster_id += 1
 
         assert len(atoms_lib_timestamps) > 0
 
@@ -677,15 +682,16 @@ class ClustersMerging():
         atoms_lib_atom = np.array(atoms_lib_atom)
         atoms_lib_sensors = np.array(atoms_lib_sensors)
         atoms_lib_run = np.array(atoms_lib_run)
+        atoms_lib_cluster_id = np.array(atoms_lib_cluster_id)
 
-        # clean repetitions
+        # clean repetitions and sort detections
         sort_unique_ind = np.unique(np.round(atoms_lib_timestamps/10),
                                     return_index=True)[1]
-
         atoms_lib_atom = atoms_lib_atom[sort_unique_ind]
         atoms_lib_sensors = atoms_lib_sensors[sort_unique_ind]
         atoms_lib_run = atoms_lib_run[sort_unique_ind]
         atoms_lib_timestamps = atoms_lib_timestamps[sort_unique_ind]
+        atoms_lib_cluster_id = atoms_lib_cluster_id[sort_unique_ind]
         n_det = X["clusters_library_timestamps"].values.shape[0]
 
         if n_det > atoms_lib_atom.shape[0]:
@@ -695,13 +701,12 @@ class ClustersMerging():
         X["clusters_library_atom"][:n_det] = atoms_lib_atom[:n_det]
         X["clusters_library_sensors"][:n_det] = atoms_lib_sensors[:n_det]
         X["clusters_library_run"][:n_det] = atoms_lib_run[:n_det]
-
-        # save resuts directly to dataset
-        X.to_netcdf(self.dataset, mode='a', format="NETCDF4", engine="netcdf4")
+        # Unique ID for each cluster
+        X["clusters_library_cluster_id"][:n_det] = atoms_lib_cluster_id[:n_det]
         return self
 
-    def transform(self, X: xr.Dataset) -> xr.Dataset:
-        return X
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        return (X, [])
 
     def _find_goodness_threshold(self, ds):
         goodness = ds["alphacsc_detections_goodness"].values.flatten()

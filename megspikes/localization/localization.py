@@ -40,6 +40,29 @@ class Localization():
         self.freesurfer_dir = case.freesurfer_dir
         self.cov = mne.make_ad_hoc_cov(self.info)
 
+    def make_labels_ts(self, stc: mne.SourceEstimate,
+                       inverse_operator: mne.minimum_norm.InverseOperator,
+                       mode: str = 'mean'):
+        """Extract labels (anatomical) time courses
+
+        Parameters
+        ----------
+        stc : mne.SourceEstimate
+            [description]
+
+        Returns
+        -------
+        label_tc
+            array
+        """
+        labels_parc = mne.read_labels_from_annot(
+            subject=self.case_name,  subjects_dir=self.freesurfer_dir)
+        src = inverse_operator['src']
+
+        label_ts = mne.extract_label_time_course(
+            [stc], labels_parc, src, mode=mode, allow_empty=True)
+        return label_ts
+
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
@@ -254,3 +277,117 @@ class AlphaCSCComponentsLocalization(Localization, BaseEstimator,
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA components are localized.")
         return X
+
+
+class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
+    def __init__(self, case: CaseManager,
+                 db_name_detections: str,
+                 db_name_clusters: str,
+                 detection_sfreq: float = 200.,
+                 sensors: Union[str, bool] = True,
+                 inv_method: str = 'MNE',
+                 epochs_window: Tuple[float] = (-0.5, 0.5)):
+        self.setup_fwd(case, sensors)
+        self.detection_sfreq = detection_sfreq
+        self.db_name_detections = db_name_detections
+        self.db_name_clusters = db_name_clusters
+        self.inv_method = inv_method
+        self.epochs_window = epochs_window
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        self.inverse_operator = make_inverse_operator(
+            self.info, self.fwd, self.cov, depth=None, fixed=False)
+        timestamps = X[0][self.db_name_detections].values
+        clusters = X[0][self.db_name_clusters].values
+        non_zero = timestamps != 0
+        timestamps = timestamps[non_zero]
+        clusters = clusters[non_zero]
+
+        # resample timestamps
+        timestamps = self.resample_timestamps(
+            timestamps, self.detection_sfreq, X[1].info['sfreq'])
+
+        epochs_width = (np.abs(self.epochs_window[0]) +
+                        np.abs(self.epochs_window[1])) * X[1].info['sfreq']
+        epochs_times = np.linspace(
+                    self.epochs_window[0], self.epochs_window[1],
+                    np.int32(epochs_width))
+        array_shape = (np.unique(clusters), len(X[1].info['chs']['ch_name']),
+                       len(epochs_times))
+        clusters_lib_evoked = xr.DataArray(
+            np.zeros(array_shape),
+            dims=("cluster_id", "meg_channels", "cluster_lib_times"),
+            coords={
+                "cluster_id": np.arange(np.unique(clusters)),
+                "meg_channels": X[1].info['chs']['ch_name'],
+                "cluster_lib_times": epochs_times},
+            name="clusters_lib_evoked")
+
+        fwd_vertno = sum([h['vertno'] for h in self.fwd['src']], [])
+        array_shape = (np.unique(clusters), len(fwd_vertno), len(epochs_times))
+        clusters_lib_sources = xr.DataArray(
+            np.zeros(array_shape),
+            dims=("cluster_id", "fwd_vertno", "cluster_lib_times"),
+            coords={
+                "cluster_id": np.arange(np.unique(clusters)),
+                "fwd_vertno": fwd_vertno,
+                "cluster_lib_times": epochs_times},
+            name="clusters_lib_sources")
+
+        clusters_lib_slope_timepoints = xr.DataArray(
+            np.zeros((len(np.unique(clusters)), 3)),
+            dims=("cluster_id", "spike_slope_timestamps"),
+            coords={
+                "cluster_id": np.arange(np.unique(clusters)),
+                "spike_slope_timepoints": ['baseline', 'slope', 'peak']
+                },
+            name="clusters_lib_slope_timepoints")
+
+        for cluster in np.unique(clusters):
+            # select timestamps for the cluster
+            times = timestamps[clusters == cluster]
+            # add first sample
+            times += X[1].first_samp
+            # Create epochs for the cluster
+            epochs = create_epochs(
+                X[1], times, tmin=self.epochs_window[0],
+                tmax=self.epochs_window[1])
+            # Create Evoked
+            evoked = epochs.average()
+            clusters_lib_evoked[cluster, :, :] = evoked.data
+
+            # minimum norm
+            stc, label_ts = self.minimum_norm(evoked)
+
+            clusters_lib_sources[cluster, :, :] = stc.data
+
+            # Slope components
+            # t1 - slope (20%), t2 - slope (50%), t3 - peak
+            slope_times = onset_slope_timepoints(label_ts)
+
+            # Update final atoms table for ROC and AtomViewer
+            clusters_lib_slope_timepoints[cluster, :] = slope_times
+
+        X[0]['clusters_lib_evoked'] = clusters_lib_evoked
+        X[0]['clusters_lib_sources'] = clusters_lib_sources
+        X[0]['clusters_lib_slope_timepoints'] = clusters_lib_slope_timepoints
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        logging.info("Clusters are localized.")
+        return X
+
+    def minimum_norm(self, evoked: Union[mne.Evoked, mne.EvokedArray],
+                     inv_method: str = 'MNE') -> Tuple[
+                         mne.SourceEstimate, np.ndarray]:
+        snr = 3.0
+        lambda2 = 1.0 / snr ** 2
+        stc = apply_inverse(
+            evoked, self.inverse_operator, lambda2, inv_method, pick_ori=None)
+        label_ts = self.make_labels_ts(stc, self.inverse_operator)
+        return stc, label_ts
+
+    def resample_timestamps(self, timestamps: np.ndarray,
+                            from_sfreq: float = 200.,
+                            to_sfreq: float = 1000.) -> np.ndarray:
+        return (timestamps / from_sfreq) * to_sfreq
