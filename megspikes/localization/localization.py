@@ -309,41 +309,42 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
 
         epochs_width = (np.abs(self.epochs_window[0]) +
                         np.abs(self.epochs_window[1])) * X[1].info['sfreq']
+        epochs_width = np.int32(epochs_width)
         epochs_times = np.linspace(
-                    self.epochs_window[0], self.epochs_window[1],
-                    np.int32(epochs_width))
-        array_shape = (np.unique(clusters), len(X[1].info['chs']['ch_name']),
-                       len(epochs_times))
+                    self.epochs_window[0], self.epochs_window[1], epochs_width)
+        channels = mne.pick_types(X[1].info, meg=True)
+        n_clusters = len(np.unique(clusters))
+        array_shape = (n_clusters, len(channels), len(epochs_times))
         clusters_lib_evoked = xr.DataArray(
             np.zeros(array_shape),
             dims=("cluster_id", "meg_channels", "cluster_lib_times"),
             coords={
-                "cluster_id": np.arange(np.unique(clusters)),
-                "meg_channels": X[1].info['chs']['ch_name'],
+                "cluster_id": np.unique(clusters),
+                "meg_channels": channels,
                 "cluster_lib_times": epochs_times},
             name="clusters_lib_evoked")
 
-        fwd_vertno = sum([h['vertno'] for h in self.fwd['src']], [])
-        array_shape = (np.unique(clusters), len(fwd_vertno), len(epochs_times))
+        fwd_vertno = np.hstack([h['vertno'] for h in self.fwd['src']])
+        array_shape = (n_clusters, len(fwd_vertno), len(epochs_times))
         clusters_lib_sources = xr.DataArray(
             np.zeros(array_shape),
             dims=("cluster_id", "fwd_vertno", "cluster_lib_times"),
             coords={
-                "cluster_id": np.arange(np.unique(clusters)),
+                "cluster_id": np.unique(clusters),
                 "fwd_vertno": fwd_vertno,
                 "cluster_lib_times": epochs_times},
             name="clusters_lib_sources")
 
         clusters_lib_slope_timepoints = xr.DataArray(
             np.zeros((len(np.unique(clusters)), 3)),
-            dims=("cluster_id", "spike_slope_timestamps"),
+            dims=("cluster_id", "spike_slope_timepoints"),
             coords={
-                "cluster_id": np.arange(np.unique(clusters)),
+                "cluster_id": np.unique(clusters),
                 "spike_slope_timepoints": ['baseline', 'slope', 'peak']
                 },
             name="clusters_lib_slope_timepoints")
 
-        for cluster in np.unique(clusters):
+        for cluster in np.int32(np.unique(clusters)):
             # select timestamps for the cluster
             times = timestamps[clusters == cluster]
             # add first sample
@@ -354,12 +355,12 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
                 tmax=self.epochs_window[1])
             # Create Evoked
             evoked = epochs.average()
-            clusters_lib_evoked[cluster, :, :] = evoked.data
+            clusters_lib_evoked[cluster, :, :] = evoked.data[:, :epochs_width]
 
             # minimum norm
             stc, label_ts = self.minimum_norm(evoked)
 
-            clusters_lib_sources[cluster, :, :] = stc.data
+            clusters_lib_sources[cluster, :, :] = stc.data[:, :epochs_width]
 
             # Slope components
             # t1 - slope (20%), t2 - slope (50%), t3 - peak

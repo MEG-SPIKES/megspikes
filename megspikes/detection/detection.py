@@ -703,10 +703,12 @@ class ClustersMerging():
         X["clusters_library_run"][:n_det] = atoms_lib_run[:n_det]
         # Unique ID for each cluster
         X["clusters_library_cluster_id"][:n_det] = atoms_lib_cluster_id[:n_det]
+        X.to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                    engine="netcdf4")
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        return (X, [])
+    def transform(self, X) -> xr.Dataset:
+        return xr.load_dataset(self.dataset)
 
     def _find_goodness_threshold(self, ds):
         goodness = ds["alphacsc_detections_goodness"].values.flatten()

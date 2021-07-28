@@ -44,7 +44,7 @@ def make_dataset():
         np.array([120., 160., 250., 310.]),
         dims=("alpha_detections"))
     clusters_library_cluster_id = xr.DataArray(
-        np.array([0, 1, 1, 0]),
+        np.array([0.0, 1.0, 1.0, 0.0]),
         dims=("alpha_detections"))
 
     ds = xr.Dataset(data_vars={
