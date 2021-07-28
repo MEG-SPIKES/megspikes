@@ -1,6 +1,7 @@
-from typing import List, Tuple, Union
 import logging
+from typing import Any, List, Tuple, Union
 
+import mne
 import numpy as np
 import xarray as xr
 from mne.beamformer._compute_beamformer import _prepare_beamformer_input
@@ -15,7 +16,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from ..casemanager.casemanager import CaseManager
 from ..utils import create_epochs, onset_slope_timepoints
 
-import mne
 mne.set_log_level("ERROR")
 
 
@@ -62,6 +62,80 @@ class Localization():
         label_ts = mne.extract_label_time_course(
             [stc], labels_parc, src, mode=mode, allow_empty=True)
         return label_ts
+
+    def binarize_stc(self, data: np.ndarray, fwd: mne.Forward,
+                     smoothing_steps: int = 3,
+                     amplitude_threshold: float = 0.5,
+                     min_sources: int = 10) -> np.ndarray:
+        """Binarization and smoothing of one SourceEstimate timepoint and
+        converting to mne.SourceEstimate.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            1d, length is equal the number of fwd sources
+        smoothing_steps : int, optional
+            smoothing individual spikes and final results, by default 3
+
+        """
+        vertices = [i['vertno'] for i in fwd['src']]
+
+        # normalize data
+        data /= data.max()
+
+        # check if amplitude is too small
+        if np.sum(data > amplitude_threshold) < min_sources:
+            sort_data_ind = np.argsort(data)[::-1]
+            data[sort_data_ind[:min_sources]] = 1
+
+        # threshold the data
+        data[data < amplitude_threshold] = 0
+        data[data >= amplitude_threshold] = 1
+
+        # Create SourceEstimate object
+        stc = mne.SourceEstimate(data, vertices, tmin=0,
+                                 tstep=0.001, subject=self.case_name)
+        # NOTE: final_data is 1D here
+        final_data = np.zeros_like(data)
+
+        # Smooth final surface left hemi
+        lh_data = self._smooth_binarized_stc(
+            stc, 0, smoothing_steps=smoothing_steps)
+        final_data[:len(stc.vertices[0])] = lh_data
+
+        # Smooth final surface right hemi
+        rh_data = self._smooth_binarized_stc(
+            stc, 1, smoothing_steps=smoothing_steps)
+        final_data[len(stc.vertices[0]):] = rh_data
+        final_data[final_data > 0] = 1
+
+        # return binary map
+        return final_data
+
+    def _smooth_binarized_stc(self, stc: mne.SourceEstimate, hemi_idx: int,
+                              smoothing_steps: int = 10):
+        """Smooth binary SourceEstimate """
+        vertices = stc.vertices[hemi_idx]
+        tris = _get_subject_sphere_tris(
+            self.case_name, self.freesurfer_dir)[hemi_idx]
+        e = mesh_edges(tris)
+        n_vertices = e.shape[0]
+        maps = sparse.identity(n_vertices).tocsr()
+
+        if hemi_idx == 0:
+            data = stc.data[:len(stc.vertices[hemi_idx]), :]
+        else:
+            data = stc.data[len(stc.vertices[0]):, :]
+        smooth_mat = _hemi_morph(
+            tris, vertices, vertices, smoothing_steps, maps, warn=False)
+        data = smooth_mat.dot(data)
+        return data.flatten()
+
+    def array_to_stc(self, data: np.ndarray) -> mne.SourceEstimate:
+        """Convert SourceEstimate data to mne.SourceEstimate object"""
+        vertices = [i['vertno'] for i in self.fwd['src']]
+        return mne.SourceEstimate(
+            data, vertices, tmin=0, tstep=0.001, subject=self.case_name)
 
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
@@ -392,3 +466,48 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
                             from_sfreq: float = 200.,
                             to_sfreq: float = 1000.) -> np.ndarray:
         return (timestamps / from_sfreq) * to_sfreq
+
+
+class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
+    def __init__(self, case: CaseManager,
+                 sensors: Union[str, bool] = True,
+                 smoothing_steps_one_cluster: int = 3,
+                 smoothing_steps_final: int = 10,
+                 amplitude_threshold: float = 0.5,
+                 min_sources: int = 10):
+        self.setup_fwd(case, sensors)
+        self.smoothing_steps_one_cluster = smoothing_steps_one_cluster
+        self.smoothing_steps_final = smoothing_steps_final
+        self.amplitude_threshold = amplitude_threshold
+        self.min_sources = min_sources
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
+        n_clusters = len(X[0].cluster_id)
+        for time in ['peak', 'slope']:
+            clusters_stcs = []
+            for cluster in np.int32(X[0].cluster_id):
+                # Select slope timepoint from database
+                slope_time = X[0]['clusters_lib_slope_timepoints'].loc[
+                    cluster, time].values
+                # Select SourceEstimate data from Datbase
+                stc_cluster = X[0]['clusters_lib_sources'][
+                    cluster, :, int(slope_time)].values
+                # Binarize SourceEstimate
+                stc_cluster_bin = self.binarize_stc(
+                    stc_cluster, self.fwd, self.smoothing_steps_one_cluster,
+                    self.amplitude_threshold, self.min_sources)
+                clusters_stcs.append(stc_cluster_bin)
+
+            # Binarize stc again
+            iz_prediciton = np.stack(clusters_stcs, axis=-1).sum(axis=-1)
+            iz_prediciton[iz_prediciton < n_clusters/2] = 0
+            iz_prediciton[iz_prediciton >= n_clusters/2] = 1
+            iz_prediciton = self.binarize_stc(
+                iz_prediciton, self.fwd, self.smoothing_steps_final,
+                self.amplitude_threshold, self.min_sources)
+            X[0]["iz_predictions"].loc[f'alphacsc_{time}', :] = iz_prediciton
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        logging.info("Irritative zone prediction using clusters is finished.")
+        return X

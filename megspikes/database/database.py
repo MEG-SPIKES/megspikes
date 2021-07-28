@@ -327,7 +327,7 @@ class Database():
             np.zeros((4, self.n_fwd_sources)),
             dims=("prediction_type", "fwd_source"),
             coords={
-                "prediction_type": ['auto_peak', 'auto_slope',
+                "prediction_type": ['alphacsc_peak', 'alphacsc_slope',
                                     'manual', 'resection']
                 },
             name="iz_predictions")

@@ -3,16 +3,15 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 from megspikes.casemanager.casemanager import CaseManager
 from megspikes.database.database import (LoadDataset, SaveDataset,
                                          SaveFullDataset)
-from megspikes.detection.detection import (CleanDetections,
+from megspikes.detection.detection import (CleanDetections, ClustersMerging,
                                            ComponentsSelection,
                                            CropDataAroundPeaks,
                                            DecompositionAlphaCSC,
                                            DecompositionICA, PeakDetection,
-                                           SelectAlphacscEvents,
-                                           ClustersMerging)
+                                           SelectAlphacscEvents)
 from megspikes.localization.localization import (
-    AlphaCSCComponentsLocalization, ICAComponentsLocalization,
-    PeakLocalization, ClustersLocalization)
+    AlphaCSCComponentsLocalization, ClustersLocalization,
+    ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
 from megspikes.utils import PrepareData, ToFinish
 
 
@@ -80,5 +79,6 @@ def make_full_pipeline(case: CaseManager, n_ica_components: int = 20,
             db_name_detections='clusters_library_timestamps',
             db_name_clusters='clusters_library_cluster_id',
             detection_sfreq=resample)),
+        ('predict_IZ', PredictIZClusters(case=case)),
         ('save_dataset', SaveFullDataset(dataset=case.dataset))])
     return pipe
