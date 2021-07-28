@@ -691,10 +691,10 @@ class ClustersMerging():
         if n_det > atoms_lib_atom.shape[0]:
             n_det = atoms_lib_atom.shape[0]
 
-        X["clusters_library_timestamps"][:n_det] = atoms_lib_atom[:n_det]
-        X["clusters_library_atom"][:n_det] = atoms_lib_sensors[:n_det]
-        X["clusters_library_sensors"][:n_det] = atoms_lib_run[:n_det]
-        X["clusters_library_run"][:n_det] = atoms_lib_timestamps[:n_det]
+        X["clusters_library_timestamps"][:n_det] = atoms_lib_timestamps[:n_det]
+        X["clusters_library_atom"][:n_det] = atoms_lib_atom[:n_det]
+        X["clusters_library_sensors"][:n_det] = atoms_lib_sensors[:n_det]
+        X["clusters_library_run"][:n_det] = atoms_lib_run[:n_det]
 
         # save resuts directly to dataset
         X.to_netcdf(self.dataset, mode='a', format="NETCDF4", engine="netcdf4")
