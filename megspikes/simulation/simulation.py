@@ -1,15 +1,15 @@
 import os.path as op
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Union
 
-import numpy as np
-
-from mne.datasets import sample
-from scipy.misc import electrocardiogram
-from scipy import signal
-
 import mne
+import numpy as np
+from megspikes.casemanager.casemanager import CaseManager
+from mne.datasets import sample
+from scipy import signal
+from scipy.misc import electrocardiogram
+
 mne.set_log_level("ERROR")
 
 
@@ -33,18 +33,19 @@ class Simulation:
     def simulate_dataset(self, length: int = 600,
                          spikes: Union[str, None] = None,
                          n_sources: int = 1):
-        self.n_events = length // n_sources
-        self.n_sources = n_sources
         # length seconds
         # TODO: add spikes reading option
         if not isinstance(spikes, str):
             self.spike_shapes = np.load(self.spikes_file)
+            # peaks in self.spike_shapes
+            self.peak_times = [0.195, 0.110, 0.290, 0.260]
 
         self.load_mne_dataset()
-        self._simulate_events(length)
+        self._simulate_events(length, n_sources)
         self._simulate_raw()
         self._add_annotation()
         self.simulate_data_structure()
+        self.simulate_case()
 
     def load_mne_dataset(self):
         data_path = sample.data_path()
@@ -73,22 +74,28 @@ class Simulation:
 
         self.meg_path = meg_path
 
-    def _simulate_events(self, length=15):
+    def _simulate_events(self, length=15, n_sources=1):
+        self.n_events = length // n_sources
+        self.n_sources = n_sources
+
         n_events = self.n_events
         n_sources = self.n_sources
-        # peaks in self.spike_shapes
-        self.peak_times = [0.195, 0.110, 0.290, 0.260]
         events = np.zeros((n_events * n_sources, 3))
         events[:, 0] = 1000 * np.arange(n_events * n_sources)
         events[:, 2] = sum([[n+1]*n_events for n in range(n_sources)], [])
-        event_id = {'spike_shape_1': 1, 'spike_shape_2': 2,
-                    'spike_shape_3': 3, 'spike_shape_4': 4}
+        event_id = {
+            'spike_shape_1': 1,
+            'spike_shape_2': 2,
+            'spike_shape_3': 3,
+            'spike_shape_4': 4}
 
-        activations = {  # label, activation (nAm)
+        # label, activation (nAm)
+        activations = {
             'spike_shape_1': [('G_temp_sup-G_T_transv-rh', 120)],
         }
         # 'spike_shape_2': [('S_subparietal-rh', 280)],
         # 'spike_shape_3': [('S_subparietal-lh', 120)],
+        # 'spike_shape_4': [('S_subparietal-lh', 120)],
 
         # SEE: https://europepmc.org/article/PMC/2937159
         annot = 'aparc.a2009s'
@@ -120,6 +127,7 @@ class Simulation:
             # print(wf_tmp.shape)
             self.source_simulator.add_data(
                 label_tmp, amplitude_tmp * wf_tmp, np.int32(events_tmp))
+
         self.label_names = label_names
         self.events = events
         self.annot = annot
@@ -177,6 +185,14 @@ class Simulation:
             op.join(self.meg_path, 'sample_audvis_raw-trans.fif'),
             str(case_dir / 'forward_model' / 'checked_visually_trans.fif'))
         shutil.copy(op.join(self.meg_path, 'ernoise-cov.fif'), str(ernoise))
+
+    def simulate_case(self):
+        case = CaseManager(
+            root=self.root, case='sample', free_surfer=self.subjects_dir)
+        case.set_basic_folders()
+        case.select_fif_file(case.run)
+        case.prepare_forward_model()
+        self.case_manager = case
 
 
 def simulate_raw_fast(seconds: int = 2, sampling_freq: int = 200,
