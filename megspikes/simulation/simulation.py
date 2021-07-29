@@ -4,7 +4,6 @@ import shutil
 from typing import Union
 
 import numpy as np
-import numpy.matlib
 
 from mne.datasets import sample
 from scipy.misc import electrocardiogram

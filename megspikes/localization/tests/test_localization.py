@@ -5,7 +5,6 @@ import pytest
 
 import numpy as np
 
-import mne
 from megspikes.casemanager.casemanager import CaseManager
 from megspikes.localization.localization import (ICAComponentsLocalization,
                                                  ClustersLocalization,
