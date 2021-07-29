@@ -84,24 +84,18 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        self._check_input_dataset(X[0])
         components = X[0]['ica_components'].values
         kurtosis = X[0]['ica_components_kurtosis'].values
         gof = X[0]['ica_components_gof'].values
 
-        assert np.max(components) != np.min(components), (
-            "Components data are all the same")
-        assert np.max(components) != np.min(components), (
-            "Kurtosis values are all the same")
-        assert np.max(gof) != np.min(gof), (
-            "GOF values are all the same")
-        assert components.shape[1] > self.n_runs, (
-            "More runs than components")
         # Run the ICA components selection
         selected = self.select_ica_components(
             components, kurtosis, gof)
 
         # Write the selected components to the database
         X[0]['ica_components_selected'][:] = selected
+        self._check_output_dataset(X[0])
         logging.info("ICA components selection is done.")
         return X
 
@@ -174,6 +168,24 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
 
         return selected
 
+    def _check_input_dataset(self, ds):
+        components = ds['ica_components'].values
+        assert np.max(components) != np.min(components), (
+            "Components data are all the same")
+        kurtosis = ds['ica_components_kurtosis'].values
+        assert np.max(kurtosis) != np.min(kurtosis), (
+            "Kurtosis values are all the same")
+        gof = ds['ica_components_gof'].values
+        assert np.max(gof) != np.min(gof), (
+            "GOF values are all the same")
+        assert components.shape[1] > self.n_runs, (
+            "More runs than components")
+
+    def _check_output_dataset(self, ds):
+        selected = ds['ica_components_selected'].values
+        assert sum(selected) > 0, (
+            "ICA components for analysis are not selected")
+
 
 class PeakDetection(TransformerMixin, BaseEstimator):
     def __init__(self,
@@ -200,9 +212,38 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         self.n_detections_threshold = n_detections_threshold
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        self._check_input_dataset(X[0])
         sources = X[0]["ica_sources"].values
         selected = X[0]["ica_components_selected"].values
 
+        timestamps = self.find_ica_peaks(sources, selected)
+
+        # TODO: accept more flexible number of peaks selection
+        if len(timestamps) > self.n_detections_threshold:
+            n_det = self.n_detections_threshold
+        else:
+            n_det = len(timestamps)
+
+        X[0]['ica_peaks_timestamps'][:n_det] = timestamps[:n_det]
+        self._check_input_dataset(X[0])
+        return self
+
+    def find_ica_peaks(self, sources: np.ndarray,
+                       selected: np.ndarray) -> np.ndarray:
+        """Find peaks in ICA sources.
+
+        Parameters
+        ----------
+        sources : np.ndarray
+            shape: n_ica_components by length of MEG recording
+        selected : np.ndarray
+            1d array with values 1 and 0; 1 - selected ICA component
+
+        Returns
+        -------
+        np.ndarray
+            detected peaks
+        """
         source_ind = np.where(selected.flatten() > 0)[0].tolist()
 
         timestamps = np.array([])
@@ -231,14 +272,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                 else:
                     timestamps = np.array([])
                     channels = np.array([])
-        if len(timestamps) > self.n_detections_threshold:
-            n_det = self.n_detections_threshold
-        else:
-            n_det = len(timestamps)
-        X[0]["ica_peaks_timestamps"][:n_det] = timestamps[:n_det]
-        if n_det == 0:
-            warnings.warn("NO ICA peaks!!!")
-        return self
+        return timestamps
 
     def _find_peaks(self, data):
         freq = np.array([self.h_filter, self.l_filter]) / (self.sfreq / 2.0)
@@ -259,6 +293,22 @@ class PeakDetection(TransformerMixin, BaseEstimator):
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         logging.info("ICA peaks detection is done.")
         return X
+
+    def _check_input_dataset(self, ds):
+        sources = ds["ica_sources"].values
+        assert np.max(sources) != np.min(sources), (
+            "ICA sources values are all the same")
+        for n, s in enumerate(sources):
+            assert np.max(s) != np.min(s), (
+                f"ICA source #{n} values are all the same")
+        selected = ds['ica_components_selected'].values
+        assert sum(selected) > 0, (
+            "ICA components for analysis are not selected")
+
+    def _check_output_dataset(self, ds):
+        times = ds['ica_peaks_timestamps'].values
+        assert len(times) > 0, (
+            "No ICA peaks detected")
 
 
 class CleanDetections(TransformerMixin, BaseEstimator):
