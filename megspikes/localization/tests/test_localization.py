@@ -1,36 +1,31 @@
 import os.path as op
 from pathlib import Path
 
-import pytest
-
 import numpy as np
-
-from megspikes.casemanager.casemanager import CaseManager
-from megspikes.localization.localization import (ICAComponentsLocalization,
-                                                 ClustersLocalization,
+import pytest
+import xarray as xr
+from megspikes.localization.localization import (ClustersLocalization,
+                                                 ICAComponentsLocalization,
                                                  PredictIZClusters)
 from megspikes.simulation.simulation import Simulation
 from megspikes.utils import PrepareData
 
-import xarray as xr
 
-sample_path = Path(op.dirname(__file__)).parent.parent.parent
-sample_path = sample_path / 'example'
-sample_path.mkdir(exist_ok=True)
+@pytest.fixture(name='simulation')
+def run_simulation():
+    sample_path = Path(op.dirname(__file__)).parent.parent.parent
+    sample_path = sample_path / 'tests_data' / 'test_localization'
+    sample_path.mkdir(exist_ok=True, parents=True)
 
-sim = Simulation(sample_path)
-sim.load_mne_dataset()
-sim.simulate_dataset(length=5)
-
-case = CaseManager(root=sample_path, case='sample',
-                   free_surfer=sim.subjects_dir)
-case.set_basic_folders()
-case.select_fif_file(case.run)
-case.prepare_forward_model()
+    sim = Simulation(sample_path)
+    sim.load_mne_dataset()
+    sim.simulate_dataset(length=5)
+    return sim
 
 
 @pytest.fixture(name="dataset")
-def make_dataset():
+def make_dataset(simulation):
+    case = simulation.case_manager
     n_ica_comp = 3
     ica_components = xr.DataArray(
         np.random.sample((n_ica_comp, 204)),
@@ -53,8 +48,7 @@ def make_dataset():
         dims=("prediction_type", "fwd_source"),
         coords={
             "prediction_type": ['alphacsc_peak', 'alphacsc_slope',
-                                'manual', 'resection']
-            },
+                                'manual', 'resection']},
         name="iz_predictions")
 
     ds = xr.Dataset(data_vars={
@@ -67,11 +61,12 @@ def make_dataset():
     return ds
 
 
-def test_components_localization(dataset):
+@pytest.mark.happy
+def test_components_localization(dataset, simulation):
     ds = dataset.copy(deep=True)
-    case.prepare_forward_model()
+    case = simulation.case_manager
     prep_data = PrepareData(sensors='grad')
-    (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
+    (_, raw) = prep_data.fit_transform((ds, simulation.raw_simulation))
     cl = ICAComponentsLocalization(case=case, sensors='grad')
     results = cl.fit_transform((ds, raw))
     assert results[0]['ica_components_localization'].any()
@@ -81,18 +76,19 @@ def test_components_localization(dataset):
     ds = dataset.copy(deep=True)
     case.prepare_forward_model(sensors='grad')
     prep_data = PrepareData(sensors='grad')
-    (_, raw) = prep_data.fit_transform((ds, sim.raw_simulation))
+    (_, raw) = prep_data.fit_transform((ds, simulation.raw_simulation))
     cl = ICAComponentsLocalization(case=case)
     results = cl.fit_transform((ds, raw))
     assert results[0]['ica_components_localization'].any()
     assert results[0]['ica_components_gof'].any()
 
 
-def test_clusters_localization(dataset):
+def test_clusters_localization(dataset, simulation):
+    case = simulation.case_manager
     ds = dataset.copy(deep=True)
     prep_data = PrepareData(sensors=True)
     (_, raw) = prep_data.fit_transform((
-        ds, sim.raw_simulation))
+        ds, simulation.raw_simulation))
     localizer = ClustersLocalization(
         case=case, db_name_detections='clusters_library_timestamps',
         db_name_clusters='clusters_library_cluster_id',

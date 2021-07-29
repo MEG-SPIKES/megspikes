@@ -139,8 +139,8 @@ dmypy.json
 *.fif
 
 # test example
-/example/
 /tutorial_data/
+/tests_data/
 
 # data
 *.nc

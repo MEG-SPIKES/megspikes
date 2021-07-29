@@ -9,8 +9,8 @@ from megspikes.simulation.simulation import Simulation
 @pytest.mark.happy
 def test_simulation():
     sample_path = Path(op.dirname(__file__)).parent.parent.parent
-    sample_path = sample_path / 'example'
-    sample_path.mkdir(exist_ok=True)
+    sample_path = sample_path / 'tests_data' / 'test_simulation'
+    sample_path.mkdir(exist_ok=True, parents=True)
 
     sim = Simulation(sample_path)
     sim.load_mne_dataset()
