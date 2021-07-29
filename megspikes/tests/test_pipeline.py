@@ -13,7 +13,7 @@ sample_path.mkdir(exist_ok=True)
 
 sim = Simulation(sample_path)
 sim.load_mne_dataset()
-sim.simulate_dataset(length=10)
+sim.simulate_dataset(length=30)
 
 
 @pytest.mark.pipeline
