@@ -197,7 +197,7 @@ class CaseManager():
                     subjects_dir=self.freesurfer_dir, n_jobs=n_jobs)
             except Exception:
                 warnings.warn(f'Using ico4 instead of {spacing}')
-                warnings.warn(traceback.print_exc())
+                traceback.print_exc()
                 src = mne.setup_source_space(
                     self.case, spacing='ico4', add_dist='patch',
                     subjects_dir=self.freesurfer_dir, n_jobs=n_jobs)
@@ -216,7 +216,7 @@ class CaseManager():
                     subjects_dir=self.freesurfer_dir)
             except Exception:
                 warnings.warn('Using ico4 instead of ico5 for BEM model')
-                warnings.warn(traceback.print_exc())
+                traceback.print_exc()
                 model = mne.make_bem_model(
                     subject=self.case, ico=4, conductivity=conductivity,
                     subjects_dir=self.freesurfer_dir)

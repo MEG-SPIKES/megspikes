@@ -57,7 +57,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
     kurtosis_max : float, optional
         maximal kurtosis score of the ICA component, by default 10.
     run : int, optional
-        run number, by default 0
+        run number. NOTE: starting from 0, by default 0
     n_runs : int, optional
         all runs in the analysis, by default 4
     """
@@ -71,7 +71,6 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                  n_runs: int = 4,
                  n_components_if_nothing_else: int = 7,
                  run: int = 0) -> None:
-
         self.n_by_var = n_by_var  # n components selected by variance
         self.gof = gof
         self.gof_abs = gof_abs
@@ -88,7 +87,45 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         components = X[0]['ica_components'].values
         kurtosis = X[0]['ica_components_kurtosis'].values
         gof = X[0]['ica_components_gof'].values
-        selected = X[0]['ica_components_selected'].values
+
+        assert np.max(components) != np.min(components), (
+            "Components data are all the same")
+        assert np.max(components) != np.min(components), (
+            "Kurtosis values are all the same")
+        assert np.max(gof) != np.min(gof), (
+            "GOF values are all the same")
+        assert components.shape[1] > self.n_runs, (
+            "More runs than components")
+        # Run the ICA components selection
+        selected = self.select_ica_components(
+            components, kurtosis, gof)
+
+        # Write the selected components to the database
+        X[0]['ica_components_selected'][:] = selected
+        logging.info("ICA components selection is done.")
+        return X
+
+    def select_ica_components(self, components: np.ndarray,
+                              kurtosis: np.ndarray,
+                              gof: np.ndarray) -> np.ndarray:
+        """Select ICA components to run pipeline.
+
+        Parameters
+        ----------
+        components : np.ndarray
+            shape channels by the number of components
+        kurtosis : np.ndarray
+            one value for each ICA component
+        gof : np.ndarray
+            one value between 0 and 1 for each ICA component
+
+        Returns
+        -------
+        np.ndarray
+            one value (o or 1) for each ICA component. 1 means that component
+            selected.
+        """
+        selected = np.ones_like(kurtosis)
         selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
@@ -98,31 +135,44 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         # ignoring the other parameters
         selected[gof > self.gof_abs] = 1
 
-        # select at 7 components by gof if nothing else was selected
+        # select at least 7 components by gof if nothing else was selected
         if np.sum(selected) == 0:
-            selected[
-                np.argsort(gof)[::-1][:self.n_components_if_nothing_else]] = 1
+            selected[np.argsort(gof)[::-1][
+                :self.n_components_if_nothing_else]] = 1
 
+        # if only one run or this is the first run
         if self.run != 0:
             # cluster components
-            # IDEA: cluster coordinates not components
+            # IDEA: cluster ICA components localization coordinates but
+            # not components
             n_runs = self.n_runs - 1
             if np.sum(selected) < n_runs:
                 selected[np.argsort(gof)[::-1][:n_runs]] = 1
 
-            # NOTE: n_clusters should be equal n_runs
+            # NOTE: n_clusters should at least equal n_runs
             kmeans = KMeans(n_clusters=n_runs, random_state=0).fit(
                 components[selected == 1])
             labels = kmeans.labels_
 
-            # Select only one cluster for each run
-            new_sel = selected[selected == 1]
-            new_sel[labels + 1 != self.run] = 0
-            selected[selected == 1] = new_sel
+            if len(np.unique(labels)) == n_runs:
+                # Select only one cluster for each run
+                new_sel = selected[selected == 1]
+                new_sel[labels + 1 != self.run] = 0
+                selected[selected == 1] = new_sel
+            else:
+                warnings.warn("Not enough ICA components for clustering")
+                # select one component by GOF
+                selected[np.argsort(gof)[::-1][:n_runs]] = 0
+                selected[np.argsort(gof)[::-1][n_runs]] = 1
 
-        X[0]['ica_components_selected'][:] = selected
-        logging.info("ICA components selection is done.")
-        return X
+        if sum(selected) == 0:
+            warnings.warn(
+                f"""Can't select ICA components, select first
+                {self.n_components_if_nothing_else} by GOF""")
+            selected[np.argsort(gof)[::-1][
+                :self.n_components_if_nothing_else]] = 1
+
+        return selected
 
 
 class PeakDetection(TransformerMixin, BaseEstimator):

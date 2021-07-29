@@ -17,6 +17,7 @@ raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
 fname = sample_path / 'raw_test.fif'
 raw_fif.save(fname=fname, overwrite=True)
 n_ica_comp = 4
+n_channels = 204
 db = Database(meg_data_length=10_000,
               n_ica_components=n_ica_comp)
 
@@ -34,6 +35,8 @@ def make_dataset():
         name = "ica_sources"
         ica_sources = np.array([cardio_ts]*n_ica_comp)*5
         ds[sel][name][:, :] = ica_sources
+        name = "ica_components"
+        ds[sel][name][:, :] = np.random.sample((n_ica_comp, n_channels))
         name = "ica_components_localization"
         ds[sel][name][:, :] = np.random.sample((n_ica_comp, 3))
         name = "ica_components_gof"
@@ -45,6 +48,8 @@ def make_dataset():
 
 @pytest.mark.happy
 def test_ica_decomposition(sensors, dataset):
+    dataset[dict(run=0, sensors=0)].ica_components.values *= 0
+    dataset[dict(run=0, sensors=1)].ica_components.values *= 0
     for sens in sensors:
         pd = PrepareData(data_file=fname, sensors=sens)
         ds_channles = db.select_sensors(dataset, sens, 0)
@@ -53,10 +58,11 @@ def test_ica_decomposition(sensors, dataset):
         _ = decomposition.fit_transform((ds_channles, data))
     assert dataset[dict(run=0, sensors=0)].ica_sources.any()
     assert dataset[dict(run=0, sensors=1)].ica_sources.any()
-    assert dataset[dict(run=0, sensors=1)].ica_components[0, 50] != 0
-    assert dataset[dict(run=0, sensors=1)].ica_components[0, 200] == 0
+    assert dataset[dict(run=0, sensors=1)].ica_components[0, 50].values != 0
+    assert dataset[dict(run=0, sensors=1)].ica_components[0, 200].values == 0
 
 
+@pytest.mark.happy
 def test_components_selection(sensors, dataset):
     for sens in sensors:
         ds_channles = db.select_sensors(dataset, sens, 0)
@@ -69,6 +75,19 @@ def test_components_selection(sensors, dataset):
         (results, _) = selection.fit_transform((ds_channles, raw_fif))
 
 
+@pytest.mark.parametrize("run,n_runs", [
+    (0, 1), (0, 2), (1, 2), (2, 3),
+    (0, 4), (1, 4), (2, 4), (3, 4)])
+@pytest.mark.parametrize("n_components", [4, 10, 20])
+def test_components_selection_detailed(run, n_runs, n_components):
+    selection = ComponentsSelection(run=run, n_runs=n_runs)
+    components = np.random.sample((n_components, 102))
+    kurtosis = np.random.uniform(low=0, high=30, size=(n_components,))
+    gof = np.random.uniform(low=0, high=100, size=(n_components,))
+    sel = selection.select_ica_components(components, kurtosis, gof)
+    assert sum(sel) > 0
+
+@pytest.mark.happy
 def test_peaks_detection(dataset):
     name = "ica_components_selected"
     dataset[name][:] = np.array([1., 1., 1., 1.])
