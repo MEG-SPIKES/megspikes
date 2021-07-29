@@ -489,10 +489,11 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
         n_clusters = len(X[0].cluster_id)
         for time in ['peak', 'slope']:
             clusters_stcs = []
-            for cluster in np.int32(X[0].cluster_id):
+            for cluster in X[0].cluster_id.values:
                 # Select slope timepoint from database
                 slope_time = X[0]['clusters_lib_slope_timepoints'].loc[
                     cluster, time].values
+                slope_time = np.int64(slope_time)
                 # Select SourceEstimate data from Datbase
                 stc_cluster = X[0]['clusters_lib_sources'][
                     cluster, :, int(slope_time)].values

@@ -515,10 +515,10 @@ class SelectAlphacscEvents():
 
         alignment = np.zeros(self.n_ica_peaks)
         z_values = np.zeros(self.n_ica_peaks)
-        selected = np.zeros(self.n_ica_peaks, dtype=np.bool)
+        selected = np.zeros(self.n_ica_peaks, dtype=bool)
 
         # estimate z-hat threshold
-        z_mad = stats.median_absolute_deviation(z_k[z_k > 0])
+        z_mad = stats.median_abs_deviation(z_k[z_k > 0])
         threshold = np.median(z_k[z_k > 0]) + z_mad*z_threshold
 
         for n, event in enumerate(z_events):
