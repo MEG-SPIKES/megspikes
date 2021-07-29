@@ -30,13 +30,16 @@ class Simulation:
         self.spikes_file = Path(op.dirname(__file__)) / 'data' / 'spikes.npy'
         self.case_info = Path(op.dirname(__file__)) / 'data' / 'case_info.xlsx'
 
-    def simulate_dataset(self, length=600, spikes=None, n_sources=1):
+    def simulate_dataset(self, length: int = 600,
+                         spikes: Union[str, None] = None,
+                         n_sources: int = 1):
         self.n_events = length // n_sources
         self.n_sources = n_sources
         # length seconds
         # TODO: add spikes reading option
         if not isinstance(spikes, str):
             self.spike_shapes = np.load(self.spikes_file)
+
         self.load_mne_dataset()
         self._simulate_events(length)
         self._simulate_raw()
@@ -73,6 +76,7 @@ class Simulation:
     def _simulate_events(self, length=15):
         n_events = self.n_events
         n_sources = self.n_sources
+        # peaks in self.spike_shapes
         self.peak_times = [0.195, 0.110, 0.290, 0.260]
         events = np.zeros((n_events * n_sources, 3))
         events[:, 0] = 1000 * np.arange(n_events * n_sources)

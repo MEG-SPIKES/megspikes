@@ -140,6 +140,7 @@ dmypy.json
 
 # test example
 /example/
+/tutorial_data/
 
 # data
 *.nc
