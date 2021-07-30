@@ -141,7 +141,7 @@ def onset_slope_timepoints(label_ts: np.ndarray,
     """ Find the peak of the spike, 50% and 20% of the slope.
     """
     # Smooth lables timeseries
-    slope = gaussian_filter(label_ts[0].mean(axis=0), sigma=sigma)
+    slope = gaussian_filter(label_ts, sigma=sigma)
     # Find all peaks TODO:, wlen=100
     peaks, properties = signal.find_peaks(slope, width=peaks_width)
     assert len(peaks) > 0, "No peaks detected"

@@ -12,11 +12,18 @@ from megspikes.simulation.simulation import simulate_raw_fast
 
 
 @pytest.fixture(name='fname')
-def fixture_data():
+def sample_path():
     sample_path = Path(op.dirname(__file__)).parent.parent.parent
     sample_path = sample_path / 'tests_data' / 'test_detection'
     sample_path.mkdir(exist_ok=True, parents=True)
     return sample_path
+
+
+@pytest.fixture(name='spikes')
+def spikes_waveforms():
+    root = Path(op.dirname(__file__)).parent.parent
+    spikes = root / 'simulation' / 'data' / 'spikes.npy'
+    return np.load(spikes)
 
 
 @pytest.fixture(name="db")
@@ -106,5 +113,28 @@ def test_peaks_detection(db, dataset):
     assert results["ica_peaks_timestamps"].values.any()
 
 
-def test_peaks_detection_details():
-    pass
+@pytest.mark.parametrize('prominence', [1, 2, 4, 7.])
+@pytest.mark.parametrize('width', [1., 5, 10.])
+def test_peaks_detection_details(spikes, prominence, width):
+    sfreq = 10_000
+    peak_detection = PeakDetection(
+        prominence=prominence, width=width, sfreq=sfreq)
+    true_peaks = []
+    for spike in spikes:
+        data = np.zeros(sfreq*3)
+        data[sfreq:sfreq+500] = spike
+        (detected_peaks, _) = peak_detection._find_peaks(data)
+        detected_peaks -= sfreq
+        true_peaks.append(np.argmax(spike))
+        assert len(detected_peaks) > 0
+        assert min(np.abs(detected_peaks - np.argmax(spike))) < 20
+
+    data = np.zeros((4, sfreq*3))
+    data[:, sfreq:sfreq+500] = spikes
+    detected_peaks = peak_detection.find_ica_peaks(
+        data, np.array([1, 1, 1, 1]))
+    detected_peaks -= sfreq
+    for i in true_peaks:
+        assert min(np.abs(detected_peaks - i)) < 20
+    # with raises(ValueError, match="1-D array"):
+    #     find_peaks(np.array(1))

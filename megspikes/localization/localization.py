@@ -441,7 +441,8 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
 
             # Slope components
             # t1 - slope (20%), t2 - slope (50%), t3 - peak
-            slope_times = onset_slope_timepoints(label_ts)
+            slope_times = onset_slope_timepoints(
+                label_ts[0].mean(axis=0))
 
             # Update final atoms table for ROC and AtomViewer
             clusters_lib_slope_timepoints.loc[

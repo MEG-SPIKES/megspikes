@@ -225,7 +225,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
             n_det = len(timestamps)
 
         X[0]['ica_peaks_timestamps'][:n_det] = timestamps[:n_det]
-        self._check_input_dataset(X[0])
+        self._check_output_dataset(X[0])
         return self
 
     def find_ica_peaks(self, sources: np.ndarray,
