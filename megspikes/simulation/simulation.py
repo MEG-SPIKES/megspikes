@@ -5,10 +5,14 @@ from typing import Union
 
 import mne
 import numpy as np
-from megspikes.casemanager.casemanager import CaseManager
+import nibabel as nb
 from mne.datasets import sample
+from mne.source_space import _check_mri
 from scipy import signal
 from scipy.misc import electrocardiogram
+
+from ..casemanager.casemanager import CaseManager
+from ..utils import stc_to_nifti
 
 mne.set_log_level("ERROR")
 
@@ -105,6 +109,7 @@ class Simulation:
             set(activation[0] for activation_list in activations.values()
                 for activation in activation_list))
         region_names = list(activations.keys())
+        self.labels = []
 
         self.source_simulator = mne.simulation.SourceSimulator(
             self.src, tstep=self.tstep)
@@ -122,6 +127,7 @@ class Simulation:
                 self.mne_subject, annot, subjects_dir=self.subjects_dir,
                 regexp=label_name, verbose=False)
             label_tmp = label_tmp[0]
+            self.labels.append(label_tmp)
             amplitude_tmp = activations[region_name][i][1]
             wf_tmp = 1e-10 * self.spike_shapes[region_id-1]
             # print(wf_tmp.shape)
@@ -193,6 +199,46 @@ class Simulation:
         case.select_fif_file(case.run)
         case.prepare_forward_model()
         self.case_manager = case
+        resection_path = case.basic_folders['resection mask']
+        self.fresection = resection_path.with_suffix('.nii')
+
+        # copy and save T1 image
+        mri_fname = _check_mri('T1.mgz', self.mne_subject, self.subjects_dir)
+        t1 = nb.load(mri_fname)
+        nb.save(t1, self.fresection.with_name("T1.nii"))
+
+        # Save resection
+        self.save_resection_as_nifti(self.fresection)
+
+    def save_resection_as_nifti(self, fsave: Union[str, Path]):
+        # TODO: add more labels
+        label = self.labels[0]
+        vertices = [i['vertno'] for i in self.fwd['src']]
+        hemi = 0 if label.hemi == 'lh' else 1
+        data = []
+        for i in [0, 1]:
+            data.append(np.zeros(len(vertices[i])))
+            if i == hemi:
+                lab_data = [
+                    1 if i in label.vertices else 0 for i in vertices[hemi]]
+                data[i] = np.array(lab_data)
+        label_mni = mne.vertex_to_mni(
+            vertices[hemi][data[hemi] != 0],
+            hemis=hemi, subject=self.mne_subject,
+            subjects_dir=self.subjects_dir)
+
+        # pos_mni = np.vstack(all_mni)
+        np.save(fsave.with_suffix(".npy"), label_mni)
+
+        data = np.hstack(data)
+        stc = mne.SourceEstimate(
+            data, vertices, tmin=0, tstep=0.001, subject=self.mne_subject)
+        stc_to_nifti(
+            stc, self.fwd, self.mne_subject,
+            self.subjects_dir, fsave)
+
+    def save_manual_detections(self):
+        pass
 
 
 def simulate_raw_fast(seconds: int = 2, sampling_freq: int = 200,

@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
-from typing import Union, List, Tuple, Any
 from pathlib import Path
+from typing import Any, List, Tuple, Union
+
 import mne
+from mne.source_space import _check_mri, _read_mri_info
+from mne.transforms import invert_transform, apply_trans
+from mne.fixes import _get_img_fdata
+import nibabel as nb
 import numpy as np
+import xarray as xr
 from scipy import signal
 from scipy.ndimage.filters import gaussian_filter
-import xarray as xr
+from scipy.spatial import Delaunay
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
@@ -156,6 +162,66 @@ def onset_slope_timepoints(label_ts: np.ndarray,
     slope_left_base = max(peak - peak_width / 2, peak-100)
     slope_times = np.linspace(max(2, slope_left_base), peak, n_points)
     return slope_times
+
+
+def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
+                 subject: str, fs_sbj_dir: Union[str, Path],
+                 fsave: Union[str, Path]) -> None:
+    """Convert mne.SourceEstimate to NIfTI image.
+    Affine transformation is in the original T1 MRI image. This is usefull for
+    visual comparison results in ITK-SNAP or similar software.
+
+    Parameters
+    ----------
+    stc : mne.SourceEstimate
+        SourceEstimate to convert to CovexHull and save as NIfTI image
+    fwd : mne.Forward
+        Forward model with the same number of sources as SourceEstimate
+    subject : str
+        Subject name in FreeSurfer folder
+    fs_sbj_dir : Union[str, Path]
+        Path to the FreeSurfer folder
+    fsave : Union[str, Path]
+        Path to save NIfTI image
+    """
+    src = fwd['src']
+    mri_fname = _check_mri('T1.mgz', subject, fs_sbj_dir)
+
+    # Load the T1 data
+    _, vox_mri_t, mri_ras_t, _, _, nim = _read_mri_info(
+        mri_fname, units='mm', return_img=True)
+    mri_vox_t = invert_transform(vox_mri_t)['trans']
+    del vox_mri_t
+    data = np.zeros(_get_img_fdata(nim).shape)
+
+    lh_coordinates = src[0]['rr'][stc.lh_vertno]*1000  # MRI coordinates
+    lh_coordinates = apply_trans(mri_vox_t, lh_coordinates)
+    lh_data = stc.lh_data
+    lh_coordinates = lh_coordinates[lh_data[:, 0] > 0, :]
+    lh_coordinates = np.int32(lh_coordinates)
+    data[lh_coordinates[:, 0], lh_coordinates[:, 1], lh_coordinates[:, 2]] = 1
+
+    rh_coordinates = src[1]['rr'][stc.rh_vertno]*1000  # MRI coordinates
+    rh_coordinates = apply_trans(mri_vox_t, rh_coordinates)
+    rh_data = stc.rh_data
+    rh_coordinates = rh_coordinates[rh_data[:, 0] > 0, :]
+    rh_coordinates = np.int32(rh_coordinates)
+    data[rh_coordinates[:, 0], rh_coordinates[:, 1], rh_coordinates[:, 2]] = 1
+
+    test_points = np.array(np.where(data == 0)).T
+
+    # create convex hull
+    for coords in [lh_coordinates, rh_coordinates]:
+        if coords.shape[0] != 0:
+            dhull = Delaunay(coords)
+            # find all points inside convex hull
+            points_inside = test_points[
+                dhull.find_simplex(test_points) >= 0]
+            data[points_inside[:, 0],
+                 points_inside[:, 1],
+                 points_inside[:, 2]] = 1
+    affine = nim.affine  # .dot(mri_ras_t['trans'])
+    nb.save(nb.Nifti1Image(data, affine), fsave)
 
 
 class ToFinish(TransformerMixin, BaseEstimator):
