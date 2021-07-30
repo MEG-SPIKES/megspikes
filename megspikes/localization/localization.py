@@ -496,7 +496,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                 slope_time = np.int64(slope_time)
                 # Select SourceEstimate data from Datbase
                 stc_cluster = X[0][
-                    'clusters_lib_sources'].values[cluster, :, slope_time]
+                    'clusters_lib_sources'].loc[cluster].values[:, slope_time]
                 # Binarize SourceEstimate
                 stc_cluster_bin = self.binarize_stc(
                     stc_cluster, self.fwd, self.smoothing_steps_one_cluster,
