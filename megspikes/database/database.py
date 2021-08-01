@@ -72,6 +72,9 @@ class Database():
                 "sensors": ['grad', 'mag'],
                 "ica_component": np.arange(self.n_ica_components),
                 },
+            attrs={
+                "n_grad": self.n_channels_grad,
+                "n_mag": self.n_channels_mag},
             name="ica_components")
 
         ica_components_localization = xr.DataArray(
@@ -82,9 +85,6 @@ class Database():
                 "ica_component": np.arange(self.n_ica_components),
                 "mni_coordinates": np.arange(3)
                 },
-            attrs={
-                "n_grad": self.n_channels_grad,
-                "n_mag": self.n_channels_mag},
             name="ica_components_localization")
 
         ica_components_gof = xr.DataArray(
@@ -377,6 +377,12 @@ class Database():
     def select_sensors(self, ds: xr.Dataset, sensors: str,
                        run: int) -> xr.Dataset:
         return ds.sel(sensors=sensors, run=run).squeeze()
+
+    def make_manual_detections_dataset(self):
+        pass
+
+    def make_resection_dataset(self):
+        pass
 
 
 class LoadDataset(TransformerMixin, BaseEstimator):

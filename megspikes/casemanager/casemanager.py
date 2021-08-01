@@ -1,5 +1,4 @@
 import re
-import traceback
 import warnings
 from pathlib import Path
 from typing import List, Union
@@ -25,19 +24,12 @@ class CaseManager():
             the name of the case
 
         """
-        # Root folders
-        self.code_source = Path.cwd()
-
         self.case = case
-
         self.root = Path(root)
-
         self.freesurfer_dir = free_surfer
-
         # Read case info (Excel)
         self.read_case_info()
-
-        self.dataset = self.case_meg / f"{case}_results.nc"
+        self.dataset = self.case_meg / f"{case}_alphacsc_results.nc"
 
     def read_case_info(self):
         case = self.case
