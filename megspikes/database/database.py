@@ -208,20 +208,6 @@ class Database():
                 },
             name="v_hat")
 
-        n_samples = np.int32(self.meg_data_length * self.sfreq2)
-        z_hat = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_atoms, n_samples)),
-            dims=("run", "sensors", "atom", "z_hat_time"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "atom": np.arange(self.n_atoms),
-                "z_hat_time": np.linspace(
-                    0, self.meg_data_length, n_samples)
-                },
-            name="z_hat")
-
         alphacsc_components_localization = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms, 3)),
             dims=("run", "sensors", "atom", "mni_coordinates"),
@@ -367,7 +353,6 @@ class Database():
             "ica_peaks_selected": ica_peaks_selected,
             "alphacsc_u_hat": u_hat,
             "alphacsc_v_hat": v_hat,
-            "alphacsc_z_hat": z_hat,
             "alphacsc_components_localization":
                 alphacsc_components_localization,
             "alphacsc_components_gof": alphacsc_components_gof,
@@ -392,7 +377,8 @@ class Database():
         info = fif_file.info
         self.n_channels_grad = len(mne.pick_types(info, meg='grad'))
         self.n_channels_mag = len(mne.pick_types(info, meg='mag'))
-        self.meg_data_length = fif_file._last_time - fif_file.first_time  # seconds
+        # length of the MEG recording in seconds
+        self.meg_data_length = fif_file._last_time - fif_file.first_time
         self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
         del fif_file, fwd
 
