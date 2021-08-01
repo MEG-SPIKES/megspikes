@@ -24,7 +24,7 @@ def fixture_data():
 @pytest.mark.slow
 def test_pipeline(simulation):
     n_ica_components = 3
-    n_ica_peaks = 20
+    n_ica_peaks = 50
     n_cleaned_peaks = 5
     resample = 200.
     n_atoms = 2  # FIXME: one atom cause bugs

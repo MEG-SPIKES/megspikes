@@ -262,7 +262,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         np.ndarray
             detected peaks
         """
-        source_ind = np.where(selected.flatten() > 0)[0].tolist()
+        source_ind = np.where(selected.flatten() > 0)[0]
 
         timestamps = np.array([])
         channels = np.array([])
@@ -290,7 +290,8 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                 else:
                     timestamps = np.array([])
                     channels = np.array([])
-        return timestamps, channels
+        sort_time_ind = np.argsort(timestamps)
+        return timestamps[sort_time_ind], channels[sort_time_ind]
 
     def _find_peaks(self, data):
         freq = np.array([self.h_filter, self.l_filter]) / (self.sfreq / 2.0)
@@ -422,28 +423,43 @@ class CropDataAroundPeaks(TransformerMixin, BaseEstimator):
         self.time = time
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        all_peaks = X[0]["ica_peaks_timestamps"].values
-        selected = np.array(X[0]["ica_peaks_selected"].values,
+        self._check_input(X[0], X[1])
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.RawArray]:
+        return self.crop_raw_around_peaks(X[0], X[1])
+
+    def crop_raw_around_peaks(self, ds: xr.Dataset, raw: mne.io.Raw):
+        all_peaks = ds["ica_peaks_timestamps"].values
+        selected = np.array(ds["ica_peaks_selected"].values,
                             dtype=bool)
         timestamps = all_peaks[selected]
-
         # Add first sample
-        timestamps += X[1].first_samp
-
+        timestamps += raw.first_samp
         # Create epochs using timestamps
         epochs = create_epochs(
-            X[1], timestamps, tmin=-self.time, tmax=self.time)
-
+            raw, timestamps, tmin=-self.time, tmax=self.time)
         # Epochs to raw
         epochs_data = epochs.copy().get_data()
         tr, ch, times = epochs_data.shape
         data = epochs_data.transpose(1, 0, 2).reshape(ch, tr*times)
-        X = (X[0], mne.io.RawArray(data, epochs.info))
-        del epochs, data
-        return self
+        self._check_output(ds, tr)
+        return (ds, mne.io.RawArray(data, epochs.info))
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.RawArray]:
-        return X
+    def _check_input(self, ds, raw):
+        values_to_check = ["ica_peaks_timestamps", "ica_peaks_selected"]
+        for val_name in values_to_check:
+            values = ds[val_name].values
+            assert np.max(values) != np.min(values), (
+                f"{val_name} values are all the same")
+        assert raw.info['sfreq'] == ds[
+            "ica_peaks_timestamps"].attrs['sfreq'], (
+            "sfreq in ICA peaks timepoints is incorrect")
+
+    def _check_output(self, ds, tr):
+        assert sum(ds["ica_peaks_selected"].values) == tr, (
+            "Number of cropped epochs is not equal number of the detected ICA"
+            "peaks.")
 
 
 class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
@@ -479,23 +495,30 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
 
     def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
             y=None):
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
+                                                      mne.io.RawArray]]:
         data = X[1].get_data(picks='meg')
         data_split = split_signal(data, **self.split_signal_kwarg)
         cdl = GreedyCDL(n_atoms=self.n_atoms, n_times_atom=self.n_times_atom,
                         n_jobs=self.n_jobs, **self.greedy_cdl_kwarg)
         cdl.fit(data_split)
         z_hat = cdl.transform(data[None, :])[0]
-        _, times = z_hat.shape
         _, ch = cdl.u_hat_.shape
-        X[0]["alphacsc_z_hat"][:, :times] = z_hat
+        xr_z_hat = xr.DataArray(
+            z_hat,
+            dims=("atom", "z_hat_time"),
+            coords={
+                "atom": np.arange(self.n_atoms)},
+            name="z_hat")
+
+        X[0]["alphacsc_z_hat"] = xr_z_hat
         X[0]["alphacsc_v_hat"][:, :] = cdl.v_hat_
         X[0]["alphacsc_u_hat"][:, :ch] = cdl.u_hat_
 
         del data, data_split, cdl
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
-                                                      mne.io.RawArray]]:
+        logging.info("AlphaCSC decomposition is done.")
         return X
 
 
@@ -551,6 +574,11 @@ class SelectAlphacscEvents():
 
     def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
             y=None):
+        self._check_input(X[0])
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
+                                                      mne.io.RawArray]]:
         n_channels = len(mne.pick_types(X[1].info, meg=True))
         self.v_hat = X[0]["alphacsc_v_hat"].values
         self.u_hat = X[0]["alphacsc_u_hat"][:, :n_channels].values
@@ -561,6 +589,26 @@ class SelectAlphacscEvents():
             X[0]["ica_peaks_selected"].values, dtype=bool)
         self.n_ica_peaks = sum(ica_peaks_selected)
 
+        (X[0]["alphacsc_detections_timestamps"][:],
+         X[0]["alphacsc_detections_atom"][:],
+         X[0]["alphacsc_detections_z_values"][:],
+         X[0]["alphacsc_detections_goodness"][:]) = self.select_alphacsc_peaks(
+             X[1], ica_peaks, ica_peaks_selected,
+             X[0]["alphacsc_detections_timestamps"].values,
+             X[0]["alphacsc_detections_atom"].values,
+             X[0]["alphacsc_detections_z_values"].values,
+             X[0]["alphacsc_detections_goodness"].values)
+        self._check_output(X[0])
+        logging.info("AlphaCSC events are selected.")
+        return X
+
+    def select_alphacsc_peaks(self,
+                              mag_data,
+                              ica_peaks,
+                              ica_peaks_selected,
+                              final_time, final_atoms,
+                              final_z_hat,
+                              final_goodness):
         # Repeat for each atom
         for atom in range(self.n_atoms):
             n_events = 0
@@ -586,7 +634,7 @@ class SelectAlphacscEvents():
             if n_events > self.atoms_selection_min_events:
                 # make epochs only with best events for this atom
                 epochs = create_epochs(
-                   X[1], events[selected_events], tmin=-0.25, tmax=0.25)
+                   mag_data, events[selected_events], tmin=-0.25, tmax=0.25)
 
                 # Estimate goodness of the atom
                 goodness = self.atom_goodness(
@@ -594,14 +642,11 @@ class SelectAlphacscEvents():
 
                 # Align ICA peaks using z-hat
                 mask = np.where(ica_peaks_selected)[0][selected_events]
-                X[0]["alphacsc_detections_timestamps"][mask] = (
-                    ica_peaks[mask] + alignment[selected_events])
-                X[0]["alphacsc_detections_atom"][mask] = [atom]*len(mask)
-                X[0]["alphacsc_detections_z_values"][
-                    mask] = z_values[selected_events]
-                X[0]["alphacsc_detections_goodness"][
-                    mask] = [goodness]*len(mask)
-        return self
+                final_time[mask] = ica_peaks[mask] + alignment[selected_events]
+                final_atoms[mask] = [atom]*len(mask)
+                final_z_hat[mask] = z_values[selected_events]
+                final_goodness[mask] = [goodness]*len(mask)
+        return final_time, final_atoms, final_z_hat, final_goodness
 
     def find_max_z(self, atom: int, z_threshold: float):
         """find events with large z-peak before ICA peak
@@ -741,9 +786,23 @@ class SelectAlphacscEvents():
             cond3 = mean_cc / self.cross_corr_threshold
         return (cond1 + cond2 + cond3) / 3
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
-                                                      mne.io.RawArray]]:
-        return X
+    def _check_input(self, ds):
+        values_to_check = [
+            "alphacsc_v_hat", "alphacsc_z_hat", "alphacsc_components_gof",
+            "ica_peaks_timestamps", "ica_peaks_selected", "alphacsc_u_hat"]
+        for val_name in values_to_check:
+            values = ds[val_name].values
+            assert np.max(values) != np.min(values), (
+                f"{val_name} values are all the same")
+
+    def _check_output(self, ds):
+        values_to_check = [
+            "alphacsc_detections_timestamps", "alphacsc_detections_atom",
+            "alphacsc_detections_z_values", "alphacsc_detections_goodness"]
+        for val_name in values_to_check:
+            values = ds[val_name].values
+            assert np.max(values) != np.min(values), (
+                f"{val_name} values are all the same")
 
 
 class ClustersMerging():
