@@ -63,8 +63,9 @@ class PlotPipeline():
     def plot_ica_sources_and_peaks(self, ica_sources: xr.DataArray,
                                    ica_peaks_timestamps: xr.DataArray,
                                    ica_peaks_sources: xr.DataArray,
-                                   sensors: str = "grad",
-                                   window: Tuple[float] = [0, 20]):
+                                   ica_peaks_selected: xr.DataArray,
+                                   window: Tuple[float] = [0, 20],
+                                   interactive=False):
         # IDEA: make the plot interactive using ipywidgets
         # pip install ipympl
         # pip install ipywidgets
@@ -73,27 +74,28 @@ class PlotPipeline():
         #     options=np.arange(len(peaks)),value=0, disabled=False,
         #     layout=Layout(width='90%')));
         assert window[1] > window[0]
-        sources = ica_sources.loc[sensors, :, :].values
-        peaks = ica_peaks_timestamps.loc[0, sensors, :].values
+        sources = ica_sources.values
+        peaks = ica_peaks_timestamps.values
         peaks = np.int32(peaks)
-        peaks_sources = ica_peaks_sources.loc[0, sensors, :].values
+        selected = ica_peaks_selected.values
+        peaks_sources = ica_peaks_sources.values
         peaks_sources = np.int32(peaks_sources)
-        unique_sources = np.unique(peaks_sources)
+        # peaks == 0 - not is the empty field
+        unique_sources = np.unique(peaks_sources[peaks != 0])
         n_sources = len(unique_sources)
 
         sfreq = ica_sources.attrs['sfreq']
         assert sfreq == ica_peaks_timestamps.attrs['sfreq']
 
         fig, axis = plt.subplots(
-            n_sources, 1, figsize=(10, n_sources/3 + 2), sharex=True)
+            n_sources, 1, figsize=(20, n_sources + 2), sharex=True)
         if n_sources == 1:
             axis = [axis]
         time_min, time_max = np.int32(np.round(np.array(window)*sfreq, 0))
         x = np.linspace(window[0], window[1], time_max - time_min)
         for n, (s, ax) in enumerate(zip(unique_sources, axis)):
-            print(x.shape)
-            ax.plot(x, sources[s, time_min: time_max])
-            ax.set_ylabel(f"ICA component {n}")
+            ax.plot(x, sources[s, time_min: time_max], lw=0.5, c='k')
+            ax.set_ylabel(f"ICA {n}")
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['bottom'].set_visible(False)
@@ -104,11 +106,21 @@ class PlotPipeline():
                 ax.get_xaxis().set_visible(False)
                 # ax.get_xaxis().set_ticks([])
 
-        for n, ax in enumerate(axis):
-            peaks_in_window = (peaks > time_min) & (peaks < time_max)
-            for n, peak in enumerate(peaks[peaks < peaks_in_window]):
-                ax.scatter(
-                    x=peak / sfreq, y=sources[peaks_sources[n], peak], c='r')
+        for s, ax in zip(unique_sources, axis):
+            peaks_in_window = ((peaks > time_min) &
+                               (peaks < time_max) &
+                               (peaks_sources == s))
+            for n, peak in enumerate(peaks[peaks_in_window]):
+                if selected[n] == 0:
+                    ax.scatter(
+                        x=peak / sfreq,
+                        y=sources[peaks_sources[n], peak],
+                        c='b', alpha=0.3)
+                else:
+                    ax.scatter(
+                        x=peak / sfreq,
+                        y=sources[peaks_sources[n], peak],
+                        c='r', alpha=0.8)
         return fig
 
     def plot_ica_peaks_localizations(self):
