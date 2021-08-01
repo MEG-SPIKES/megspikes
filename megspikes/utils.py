@@ -14,6 +14,8 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.spatial import Delaunay
 from sklearn.base import BaseEstimator, TransformerMixin
 
+mne.set_log_level("ERROR")
+
 
 class PrepareData(BaseEstimator, TransformerMixin):
     """Prepare mne.io.Raw object analysis
