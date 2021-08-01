@@ -7,7 +7,7 @@ import mne
 
 
 class Database():
-    def __init__(self, meg_data_length: int = 10_000,
+    def __init__(self, meg_data_length: int = 10,
                  n_fwd_sources: int = 20_000,
                  n_sensor_types: int = 2,
                  sensors: List[str] = ['grad', 'mag'],
@@ -24,7 +24,7 @@ class Database():
                  n_times_cluster_epoch: int = 1000,
                  n_channels_grad: int = 204,
                  n_channels_mag: int = 102):
-        self.meg_data_length = meg_data_length
+        self.meg_data_length = meg_data_length  # seconds
         self.n_fwd_sources = n_fwd_sources
         self.n_sensor_types = n_sensor_types
         self.n_sensors_by_types = n_sensors_by_types
@@ -44,12 +44,12 @@ class Database():
 
     def make_empty_dataset(self) -> xr.Dataset:
         # --------- ICA decomposition --------- #
-        n_samples_ica_sources = np.int32(
-            self.meg_data_length / 1000 * self.sfreq1)
+        n_samples_ica_sources = int(
+            round(self.meg_data_length * self.sfreq2, 0))
         ica_sources = xr.DataArray(
             np.zeros((self.n_sensor_types,
                       self.n_ica_components,
-                      self.meg_data_length)),
+                      n_samples_ica_sources)),
             dims=("sensors", "ica_component", "time"),
             coords={
                 "sensors": ['grad', 'mag'],
@@ -59,6 +59,7 @@ class Database():
                 },
             name="ica_sources",
             attrs=dict(
+                sfreq=self.sfreq2,
                 description="",
                 units="",
                 )
@@ -127,7 +128,21 @@ class Database():
                 "sensors": ['grad', 'mag'],
                 "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
+            attrs={
+                "sfreq": self.sfreq2
+                },
             name="ica_peaks_timestamps")
+
+        ica_peaks_sources = xr.DataArray(
+            np.zeros((self.n_runs, self.n_sensor_types,
+                      self.n_detected_peaks)),
+            dims=("run", "sensors", "ica_timestamps"),
+            coords={
+                "run": np.arange(self.n_runs),
+                "sensors": ['grad', 'mag'],
+                "ica_timestamps": np.arange(self.n_detected_peaks)
+                },
+            name="ica_peaks_sources")
 
         ica_peaks_localization = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
@@ -193,7 +208,7 @@ class Database():
                 },
             name="v_hat")
 
-        n_samples = np.int32(self.meg_data_length / 1000 * self.sfreq2)
+        n_samples = np.int32(self.meg_data_length * self.sfreq2)
         z_hat = xr.DataArray(
             np.zeros((self.n_runs, self.n_sensor_types,
                       self.n_atoms, n_samples)),
@@ -239,6 +254,9 @@ class Database():
                 "sensors": ['grad', 'mag'],
                 "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
+            attrs={
+                "sfreq": self.sfreq2
+                },
             name="alphacsc_detections_timestamps")
 
         alphacsc_detections_goodness = xr.DataArray(
@@ -282,6 +300,9 @@ class Database():
             coords={
                 "clusters_library_detections": np.arange(
                     self.n_clusters_library_timepoints)
+                },
+            attrs={
+                "sfreq": self.sfreq2
                 },
             name="clusters_library_timestamps")
 
@@ -340,6 +361,7 @@ class Database():
             "ica_components_kurtosis": ica_components_kurtosis,
             "ica_components_selected": ica_components_selected,
             "ica_peaks_timestamps": ica_peaks_timestamps,
+            "ica_peaks_sources": ica_peaks_sources,
             "ica_peaks_localization": ica_peaks_localization,
             "ica_peaks_subcorr": ica_peaks_subcorr,
             "ica_peaks_selected": ica_peaks_selected,
@@ -370,7 +392,7 @@ class Database():
         info = fif_file.info
         self.n_channels_grad = len(mne.pick_types(info, meg='grad'))
         self.n_channels_mag = len(mne.pick_types(info, meg='mag'))
-        self.meg_data_length = fif_file.n_times
+        self.meg_data_length = fif_file._last_time - fif_file.first_time  # seconds
         self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
         del fif_file, fwd
 
