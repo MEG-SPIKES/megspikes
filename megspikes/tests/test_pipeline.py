@@ -25,14 +25,12 @@ def fixture_data():
 def test_pipeline(simulation):
     n_ica_components = 3
     n_ica_peaks = 50
-    n_cleaned_peaks = 5
     resample = 200.
     n_atoms = 2  # FIXME: one atom cause bugs
     z_hat_threshold = 1.
     z_hat_threshold_min = 0.1
     db = Database(n_ica_components=n_ica_components,
                   n_detected_peaks=n_ica_peaks,
-                  n_cleaned_peaks=n_cleaned_peaks,
                   n_atoms=n_atoms)
     case = simulation.case_manager
     db.read_case_info(case.fif_file, case.fwd['ico5'])

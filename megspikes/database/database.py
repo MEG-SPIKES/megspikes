@@ -18,7 +18,6 @@ class Database():
                  n_runs: int = 4,
                  n_atoms: int = 3,
                  n_detected_peaks: int = 2000,
-                 n_cleaned_peaks: int = 300,
                  atom_length: float = 0.5,  # seconds
                  n_clusters_library_timepoints: int = 2000,
                  n_times_cluster_epoch: int = 1000,
@@ -35,7 +34,6 @@ class Database():
         self.n_atoms = n_atoms
         self.n_runs = n_runs
         self.n_detected_peaks = n_detected_peaks
-        self.n_cleaned_peaks = n_cleaned_peaks
         self.atom_length = atom_length  # ms
         self.n_clusters_library_timepoints = n_clusters_library_timepoints
         self.n_times_cluster_epoch = n_times_cluster_epoch
@@ -129,7 +127,7 @@ class Database():
                 "ica_timestamps": np.arange(self.n_detected_peaks)
                 },
             attrs={
-                "sfreq": self.sfreq2
+                "sfreq": self.sfreq2,
                 },
             name="ica_peaks_timestamps")
 

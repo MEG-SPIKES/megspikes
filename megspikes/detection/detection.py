@@ -230,6 +230,9 @@ class PeakDetection(TransformerMixin, BaseEstimator):
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         self._check_input(X[0])
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         sources = X[0]["ica_sources"].values
         selected = X[0]["ica_components_selected"].values
 
@@ -242,9 +245,12 @@ class PeakDetection(TransformerMixin, BaseEstimator):
             n_det = len(timestamps)
 
         X[0]['ica_peaks_timestamps'][:n_det] = timestamps[:n_det]
+        X[0]['ica_peaks_timestamps'].attrs["filtering"] = (
+            self.h_filter, self.l_filter)
         X[0]['ica_peaks_sources'][:n_det] = channels[:n_det]
         self._check_output(X[0])
-        return self
+        logging.info("ICA peaks detection is done.")
+        return X
 
     def find_ica_peaks(self, sources: np.ndarray,
                        selected: np.ndarray) -> np.ndarray:
@@ -308,10 +314,6 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         window = self.sfreq
         peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
         return peaks, props
-
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        logging.info("ICA peaks detection is done.")
-        return X
 
     def _check_input(self, ds):
         sources = ds["ica_sources"].values

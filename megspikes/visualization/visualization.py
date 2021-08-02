@@ -1,11 +1,11 @@
-from typing import Tuple
-
 import matplotlib.pylab as plt
 import mne
-
 import numpy as np
-
 import xarray as xr
+from scipy import signal
+import holoviews as hv
+# from holoviews import opts
+hv.extension('bokeh')
 
 mne.set_log_level("WARNING")
 
@@ -60,68 +60,80 @@ class PlotPipeline():
                 ax.get_yaxis().set_visible(False)
         return fig
 
-    def plot_ica_sources_and_peaks(self, ica_sources: xr.DataArray,
-                                   ica_peaks_timestamps: xr.DataArray,
-                                   ica_peaks_sources: xr.DataArray,
-                                   ica_peaks_selected: xr.DataArray,
-                                   window: Tuple[float] = [0, 20],
-                                   interactive=False):
-        # IDEA: make the plot interactive using ipywidgets
-        # pip install ipympl
-        # pip install ipywidgets
-        # from ipywidgets import interact, SelectionSlider, Layout
-        # interact(update, peak_index=SelectionSlider(
-        #     options=np.arange(len(peaks)),value=0, disabled=False,
-        #     layout=Layout(width='90%')));
-        assert window[1] > window[0]
-        sources = ica_sources.values
-        peaks = ica_peaks_timestamps.values
-        peaks = np.int32(peaks)
-        selected = ica_peaks_selected.values
-        peaks_sources = ica_peaks_sources.values
-        peaks_sources = np.int32(peaks_sources)
-        # peaks == 0 - not is the empty field
-        unique_sources = np.unique(peaks_sources[peaks != 0])
-        n_sources = len(unique_sources)
+    def plot_ica_sources_and_peaks(self, results):
+        def ica_ts(run, sens, filt, t, window, scale):
+            sfreq = 200.
+            sources = results.ica_sources.values[sens]
+            t_max = min(int((t + window/2)*sfreq), sources.shape[1])
+            t_min = max(int((t - window/2)*sfreq), 0)
+            all_sources = []
+            first_sample = sources[:, :t_min].shape[1]
+            sources = sources[:, t_min:t_max]*scale
+            for n, i in enumerate(sources):
+                peaks = results.ica_peaks_timestamps.values[
+                    run, sens, :].copy()
+                peak_source = results.ica_peaks_sources.values[
+                    run, sens, :].copy()
+                mask = (peaks < t_max) & (peaks > t_min) & (peaks != 0)
+                peaks = peaks[mask]
+                peak_source = peak_source[mask]
+                # peak_selected = results.ica_peaks_selected.loc[
+                # run, sensors, :].values.copy()
+                if filt == 1:
+                    freq = np.array([20, 90]) / (sfreq / 2.0)
+                    b, a = signal.butter(3, freq, "pass")
+                    i = signal.filtfilt(b, a, i)
+                curve = hv.Curve(i, 'time', 'ica')
+                peaks_n = peaks[peak_source == n] - first_sample
+                scatter = hv.Scatter((peaks_n, i[np.int32(peaks_n)]),
+                                     'time', 'ica')
+                all_sources.append(curve*scatter)
+        dmap = hv.DynamicMap(
+            ica_ts, kdims=['run', 'sens', 'filt', 't', 'window', 'scale'])
+        return dmap.redim.range(run=(0, 3), sens=(0, 1), filt=(0, 1),
+                                t=(2, 10), window=(3, 9), scale=(1, 10))
 
-        sfreq = ica_sources.attrs['sfreq']
-        assert sfreq == ica_peaks_timestamps.attrs['sfreq']
-
-        fig, axis = plt.subplots(
-            n_sources, 1, figsize=(20, n_sources + 2), sharex=True)
-        if n_sources == 1:
-            axis = [axis]
-        time_min, time_max = np.int32(np.round(np.array(window)*sfreq, 0))
-        x = np.linspace(window[0], window[1], time_max - time_min)
-        for n, (s, ax) in enumerate(zip(unique_sources, axis)):
-            ax.plot(x, sources[s, time_min: time_max], lw=0.5, c='k')
-            ax.set_ylabel(f"ICA {n}")
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            if n == n_sources - 1:
-                ax.set_xlabel("Time [s]")
-            else:
-                ax.get_xaxis().set_visible(False)
-                # ax.get_xaxis().set_ticks([])
-
-        for s, ax in zip(unique_sources, axis):
-            peaks_in_window = ((peaks > time_min) &
-                               (peaks < time_max) &
-                               (peaks_sources == s))
-            for n, peak in enumerate(peaks[peaks_in_window]):
-                if selected[n] == 0:
-                    ax.scatter(
-                        x=peak / sfreq,
-                        y=sources[peaks_sources[n], peak],
-                        c='b', alpha=0.3)
-                else:
-                    ax.scatter(
-                        x=peak / sfreq,
-                        y=sources[peaks_sources[n], peak],
-                        c='r', alpha=0.8)
-        return fig
+    # layout = hv.Layout(all_sources).cols(1).opts(
+    #     opts.Layout(), # shared_axes=False
+    #     opts.Curve(line_width=0.5,
+    #                 color='k', yaxis=None, height=100, line_alpha=0.6,
+    # width=800,
+    #                 xaxis=None),
+    #     opts.Scatter(color='indianred'))
+    # return layout
+    #     sfreq = results.ica_sources.attrs['sfreq']
+    #     assert sfreq == results.ica_peaks_timestamps.attrs['sfreq']
+    #     holomap = hv.HoloMap(kdims=[
+    #         'run', 'sensors', 'filtering', 'ica_source'])
+    #     for run in [0, 1, 2, 3]:
+    #         for sens in ['grad', 'mag']:
+    #             for filt in ['raw', 'filtered']:
+    #                 sources = results.ica_sources.loc[sens].values
+    #                 for n, i in enumerate(sources):
+    #                     peaks = results.ica_peaks_timestamps.loc[
+    #                         run, sens, :].values.copy()
+    #                     peak_source = results.ica_peaks_sources.loc[
+    #                         run, sens, :].values.copy()
+    #                     # peak_selected = results.ica_peaks_selected.loc[
+    #                     # run, sensors, :].values.copy()
+    #                     if filt == 'filtered':
+    #                         freq = np.array([20, 90]) / (sfreq / 2.0)
+    #                         b, a = signal.butter(3, freq, "pass")
+    #                         i = signal.filtfilt(b, a, i)
+    #                     peak_source = peak_source[peaks != 0]
+    #                     peaks = peaks[peaks != 0]
+    #                     curve = hv.Curve(i, 'time', 'ica')
+    #                     peaks_n = peaks[peak_source == n]
+    #                     scatter = hv.Scatter(
+    #                         (peaks_n, i[np.int32(peaks_n)]), 'time', 'ica')
+    #                     holomap[run, sens, filt, n] = curve*scatter
+    #     layout = holomap.layout('ica_source').cols(1).opts(
+    #         opts.Layout(shared_axes=False),
+    #         opts.Curve(width=800, height=100, line_width=0.5,
+    #                    line_color='k', line_alpha=0.6, yaxis=None,
+    #                    xaxis=None),
+    #         opts.Scatter(color='indianred'))
+    #     return layout
 
     def plot_ica_peaks_localizations(self):
         pass
