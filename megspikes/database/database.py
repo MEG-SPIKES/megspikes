@@ -81,6 +81,16 @@ class Database():
         # mne_length = 1
         # mne_times = np.linspace(0, 1, mne_length*sfreq)
 
+        channel_names = xr.DataArray(
+            data=channel_names,
+            dims=("channel"),
+            coords={"channel": channels},
+            attrs={
+                'grad': grad_inx,
+                'mag': mag_inx,
+            },
+            name="channel_names")
+
         detection_properties = xr.DataArray(
             data=np.zeros(
                 (len(pipelines), len(sensors),
@@ -195,6 +205,7 @@ class Database():
         # )
 
         ds = xr.merge([
+            channel_names,
             ica_sources,
             ica_components,
             ica_component_properties,
@@ -213,22 +224,20 @@ class Database():
             raise RuntimeError("Fif file was not found")
         fif_file = mne.io.read_raw_fif(fif_file_path, preload=False)
         info = fif_file.info
-        self.n_channels_grad = len(mne.pick_types(info, meg='grad'))
-        self.n_channels_mag = len(mne.pick_types(info, meg='mag'))
+        # TODO: other sensors types
+        for sens in ['grad', 'mag']:
+            self.channels_by_sensors[sens] = mne.pick_types(info, meg=sens)
+        self.channel_names = info['ch_names']
         # length of the MEG recording in seconds
-        self.meg_data_length = fif_file._last_time - fif_file.first_time
+        self.times = fif_file.times
         self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
         del fif_file, fwd
 
     def select_sensors(self, ds: xr.Dataset, sensors: str,
-                       run: int) -> xr.Dataset:
-        return ds.sel(sensors=sensors, run=run).squeeze()
-
-    def make_manual_detections_dataset(self):
-        pass
-
-    def make_resection_dataset(self):
-        pass
+                       pipeline: str) -> xr.Dataset:
+        channels = ds.channel_names.attrs[sensors]
+        selection = dict(pipeline=pipeline, sensors=sensors, channel=channels)
+        return ds.loc[selection]
 
 
 class LoadDataset(TransformerMixin, BaseEstimator):
