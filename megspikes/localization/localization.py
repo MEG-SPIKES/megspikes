@@ -143,19 +143,21 @@ class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
         self.setup_fwd(case, sensors)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        components = X[0]['ica_components'].values[:, :self.n_channels].T
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        components = X[0]['ica_components'].values.T
         evoked = mne.EvokedArray(components, self.info)
         dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
-
+        ds_coords_loc = dict(
+            ica_component_property=['mni_x', 'mni_y', 'mni_z'])
         for n, d in enumerate(dip):
             pos_mni = mne.head_to_mni(
                 d.pos[0],  self.case_name, self.fwd['mri_head_t'],
                 subjects_dir=self.freesurfer_dir)
-            X[0]['ica_components_localization'][n, :] = pos_mni
-            X[0]['ica_components_gof'][n] = d.gof[0]
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+            X[0]['ica_component_properties'].loc[
+                ds_coords_loc][n, :] = pos_mni
+            X[0]['ica_component_properties'].loc[n, 'gof'] = d.gof[0]
         logging.info("ICA components are localized.")
         return X
 
