@@ -235,55 +235,41 @@ class Database():
 
     def select_sensors(self, ds: xr.Dataset, sensors: str,
                        pipeline: str) -> xr.Dataset:
-        channels = ds.channel_names.attrs[sensors]
-        selection = dict(pipeline=pipeline, sensors=sensors, channel=channels)
-        return ds.loc[selection]
+        ds_subset, _ = select_sensors(ds, sensors, pipeline)
+        return ds_subset
 
 
 class LoadDataset(TransformerMixin, BaseEstimator):
     def __init__(self, dataset: Union[str, Path], sensors: str,
-                 run: int) -> None:
+                 pipeline: int) -> None:
         self.dataset = dataset
-        if sensors == 'grad':
-            self.sensors = 0
-        else:
-            self.sensors = 1
-        self.run = run
+        self.sensors = sensors
+        self.pipeline = pipeline
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        selection = dict(run=self.run, sensors=self.sensors)
         ds = xr.load_dataset(self.dataset)
-        return (ds[selection].squeeze(), X[1])
+        return (select_sensors(ds, self.sensors, self.pipeline), X[1])
 
 
 class SaveDataset(TransformerMixin, BaseEstimator):
+    """Save merge subset of the database in the full dataset
+    """
     def __init__(self, dataset: Union[str, Path], sensors: str,
-                 run: int) -> None:
+                 pipeline: int) -> None:
         self.dataset = dataset
-        if sensors == 'grad':
-            self.sensors = 0
-        else:
-            self.sensors = 1
-        self.run = run
+        self.sensors = sensors
+        self.pipeline = pipeline
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        selection = dict(run=self.run, sensors=self.sensors)
         ds = xr.load_dataset(self.dataset)
-        # TODO: fix this
-        for key, val in ds[selection].items():
-            shape = ds[selection][key].shape
-            if len(shape) == 1:
-                ds[selection][key][:] = X[0][key]
-            elif len(shape) == 2:
-                ds[selection][key][:, :] = X[0][key]
-            elif len(shape) == 3:
-                ds[selection][key][:, :, :] = X[0][key]
+        _, selection = select_sensors(ds, self.sensors, self.pipeline)
+        ds.loc[selection].assign(X[0])
         ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                      engine="netcdf4")
         return X
@@ -300,3 +286,10 @@ class SaveFullDataset(TransformerMixin, BaseEstimator):
         X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
                        engine="netcdf4")
         return X
+
+
+def select_sensors(ds: xr.Dataset, sensors: str,
+                   pipeline: str) -> xr.Dataset:
+    channels = ds.channel_names.attrs[sensors]
+    selection = dict(pipeline=pipeline, sensors=sensors, channel=channels)
+    return ds.loc[selection], selection

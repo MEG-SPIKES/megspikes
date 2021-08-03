@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
-from megspikes.database.database import Database
+from megspikes.database.database import Database, LoadDataset, SaveDataset
 from megspikes.simulation.simulation import Simulation
 
 
@@ -32,7 +32,8 @@ def test_database_selection():
     assert ds_grad.channel_names.shape[0] == 204
 
 
-def test_database_read_info(simulation):
+@pytest.mark.happy
+def test_database(simulation):
     db = Database()
     db.read_case_info(simulation.case_manager.fif_file,
                       simulation.case_manager.fwd['ico5'])
@@ -40,3 +41,10 @@ def test_database_read_info(simulation):
     assert type(ds) == xr.Dataset
     ds_grad = db.select_sensors(ds, 'grad', 'aspire_alphacsc_run_1')
     assert ds_grad.channel_names.shape[0] == 204
+    ds.to_netcdf(simulation.case_manager.dataset)
+    sdb = SaveDataset(simulation.case_manager.dataset,
+                      'grad', 'aspire_alphacsc_run_1')
+    X = sdb.fit_transform((ds, None))
+    ldb = LoadDataset(simulation.case_manager.dataset,
+                      'grad', 'aspire_alphacsc_run_1')
+    _ = ldb.fit_transform(X)
