@@ -1,4 +1,4 @@
-from typing import List, Union, Any, Tuple
+from typing import List, Dict, Union, Any, Tuple
 from pathlib import Path
 import xarray as xr
 import numpy as np
@@ -7,364 +7,204 @@ import mne
 
 
 class Database():
-    def __init__(self, meg_data_length: int = 10,
+    def __init__(self,
+                 times: np.ndarray = np.linspace(0, 10, 2000),
                  n_fwd_sources: int = 20_000,
-                 n_sensor_types: int = 2,
                  sensors: List[str] = ['grad', 'mag'],
-                 n_sensors_by_types: List[int] = [204, 102],
+                 channels_by_sensors: Dict[str, np.ndarray] = {
+                     'grad': np.arange(0, 204),
+                     'mag': np.arange(204, 306)},
+                 channel_names: List[str] = [f'MEG {i}' for i in range(306)],
                  n_ica_components: int = 20,
                  sfreq1: int = 1000,
                  sfreq2: int = 200,
-                 n_runs: int = 4,
+                 n_aspire_alphacsc_runs: int = 4,
                  n_atoms: int = 3,
-                 n_detected_peaks: int = 2000,
                  atom_length: float = 0.5,  # seconds
-                 n_clusters_library_timepoints: int = 2000,
-                 n_times_cluster_epoch: int = 1000,
-                 n_channels_grad: int = 204,
-                 n_channels_mag: int = 102):
-        self.meg_data_length = meg_data_length  # seconds
+                 ):
+        self.times = times  # seconds
+        self.meg_data_length = len(self.times)  # seconds
         self.n_fwd_sources = n_fwd_sources
-        self.n_sensor_types = n_sensor_types
-        self.n_sensors_by_types = n_sensors_by_types
+        self.channels_by_sensors = channels_by_sensors
         self.sensors = sensors
+        self.channel_names = channel_names
         self.n_ica_components = n_ica_components
         self.sfreq1 = sfreq1  # Hz before downsampling
         self.sfreq2 = sfreq2  # Hz after downsampling
         self.n_atoms = n_atoms
-        self.n_runs = n_runs
-        self.n_detected_peaks = n_detected_peaks
+        self.n_aspire_alphacsc_runs = n_aspire_alphacsc_runs
         self.atom_length = atom_length  # ms
-        self.n_clusters_library_timepoints = n_clusters_library_timepoints
-        self.n_times_cluster_epoch = n_times_cluster_epoch
-        self.n_channels_grad = n_channels_grad
-        self.n_channels_mag = n_channels_mag
 
     def make_empty_dataset(self) -> xr.Dataset:
-        # --------- ICA decomposition --------- #
-        n_samples_ica_sources = int(
-            round(self.meg_data_length * self.sfreq2, 0))
+        # time coordinate
+        t = self.times
+        sfreq = self.sfreq2
+        meg_data_length = len(t)
+
+        # channels and sensors
+        sensors = self.sensors
+        channel_names = self.channel_names
+        channels = np.arange(len(channel_names))
+        grad_inx = self.channels_by_sensors['grad']
+        mag_inx = self.channels_by_sensors['mag']
+
+        # pipeline steps
+        runs_rng = range(1, self.n_aspire_alphacsc_runs + 1)
+        pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
+        pipelines += ["aspire_alphacsc_clusters_library"]
+        pipelines += ["manual"]
+
+        # detected evensts properties
+        detection_properties = [
+            'ica_component', 'mni_x', 'mni_y', 'mni_z', 'subcorr',
+            'selected_for_alphacsc', 'alphacsc_atom', 'alphacsc_alignment',
+            'clust_lib']
+
+        # ica components
+        n_ica_components = self.n_ica_components
+        ica_components_coords = np.arange(n_ica_components)
+        ica_component_properties_coords = [
+            'mni_x', 'mni_y', 'mni_z', 'gof', 'kurtosis']
+
+        # alphacsc atoms
+        n_alphacsc_atoms = self.n_atoms
+        alphacsc_atoms_coords = np.arange(n_alphacsc_atoms)
+        atom_length = int(self.atom_length * sfreq)
+        atom_v_times = np.linspace(
+            0, round(atom_length / sfreq, 0), atom_length)
+        alphacsc_atoms_properties_coords = [
+            'mni_x', 'mni_y', 'mni_z', 'gof']
+
+        # vertices = np.arange(20_000)  # vert no
+        # sfreq2 = 1000
+        # n_clusters = 5
+        # mne_length = 1
+        # mne_times = np.linspace(0, 1, mne_length*sfreq)
+
+        detection_properties = xr.DataArray(
+            data=np.zeros(
+                (len(pipelines), len(sensors),
+                 len(detection_properties), meg_data_length)),
+            dims=("pipeline", "sensors", "detection_property", "time"),
+            coords={
+                "pipeline": pipelines,
+                "sensors": sensors,
+                "detection_property": detection_properties,
+                "time": t
+            },
+            name="detection_properties")
+
         ica_sources = xr.DataArray(
-            np.zeros((self.n_sensor_types,
-                      self.n_ica_components,
-                      n_samples_ica_sources)),
+            data=np.zeros((len(sensors), n_ica_components, meg_data_length)),
             dims=("sensors", "ica_component", "time"),
             coords={
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components),
-                "time": np.linspace(
-                    0, self.meg_data_length, n_samples_ica_sources)
-                },
-            name="ica_sources",
-            attrs=dict(
-                sfreq=self.sfreq2,
-                description="",
-                units="",
-                )
-            )
+                "sensors": sensors,
+                "ica_component": ica_components_coords,
+                "time": t
+            },
+            name="ica_sources")
 
         ica_components = xr.DataArray(
-            np.zeros((self.n_sensor_types, self.n_ica_components,
-                      max(self.n_sensors_by_types))),
-            dims=("sensors", "ica_component", "channels"),
+            data=np.zeros((n_ica_components, len(channels))),
+            dims=("ica_component", "channel"),
             coords={
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components),
-                },
+                "ica_component": ica_components_coords,
+                "channel": channels
+            },
             attrs={
-                "n_grad": self.n_channels_grad,
-                "n_mag": self.n_channels_mag},
+                'grad': grad_inx,
+                'mag': mag_inx,
+            },
             name="ica_components")
 
-        ica_components_localization = xr.DataArray(
-            np.zeros((self.n_sensor_types, self.n_ica_components, 3)),
-            dims=("sensors", "ica_component", "mni_coordinates"),
+        ica_component_properties = xr.DataArray(
+            data=np.zeros(
+                (len(sensors), n_ica_components,
+                 len(ica_component_properties_coords))),
+            dims=("sensors", "ica_component", "ica_component_property"),
             coords={
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components),
-                "mni_coordinates": np.arange(3)
-                },
-            name="ica_components_localization")
+                "sensors": sensors,
+                "ica_component": ica_components_coords,
+                "ica_component_property": ica_component_properties_coords,
+            },
+            name="ica_component_properties")
 
-        ica_components_gof = xr.DataArray(
-            np.zeros((self.n_sensor_types, self.n_ica_components)),
-            dims=("sensors", "ica_component"),
+        ica_component_selection = xr.DataArray(
+            data=np.zeros((len(pipelines), len(sensors), n_ica_components)),
+            dims=("pipeline", "sensors", "ica_component"),
             coords={
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components)
-                },
-            name="ica_components_gof")
+                "pipeline": pipelines,
+                "sensors": sensors,
+                "ica_component": ica_components_coords,
+            },
+            name="ica_component_selection")
 
-        ica_components_kurtosis = xr.DataArray(
-            np.zeros((self.n_sensor_types, self.n_ica_components)),
-            dims=("sensors", "ica_component"),
+        alphacsc_z_hat = xr.DataArray(
+            data=np.zeros((
+                len(pipelines), len(sensors), n_alphacsc_atoms,
+                meg_data_length)),
+            dims=("pipeline", "sensors", "alphacsc_atom", "time"),
             coords={
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components)
-                },
-            name="ica_components_kurtosis")
+                "pipeline": pipelines,
+                "sensors": sensors,
+                "alphacsc_atom": alphacsc_atoms_coords,
+                "time": t
+            },
+            name="alphacsc_z_hat")
 
-        ica_components_selected = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_ica_components)),
-            dims=("run", "sensors", "ica_component"),
+        alphacsc_v_hat = xr.DataArray(
+            data=np.zeros(
+                (len(pipelines), len(sensors), n_alphacsc_atoms, atom_length)),
+            dims=("pipeline", "sensors", "alphacsc_atom", "atom_v_time"),
             coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_component": np.arange(self.n_ica_components)
-                },
-            name="ica_components_selected")
+                "pipeline": pipelines,
+                "sensors": sensors,
+                "alphacsc_atom": alphacsc_atoms_coords,
+                "atom_v_time": atom_v_times
+            },
+            name="alphacsc_v_hat")
 
-        # --------- ICA peaks --------- #
-
-        ica_peaks_timestamps = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
+        alphacsc_u_hat = xr.DataArray(
+            data=np.zeros((len(pipelines), n_alphacsc_atoms, len(channels))),
+            dims=("pipeline", "alphacsc_atom", "channel"),
             coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
+                "pipeline": pipelines,
+                "alphacsc_atom": alphacsc_atoms_coords,
+                "channel": channels
+            },
             attrs={
-                "sfreq": self.sfreq2,
-                },
-            name="ica_peaks_timestamps")
+                'grad': grad_inx,
+                'mag': mag_inx
+            },
+            name="alphacsc_u_hat")
 
-        ica_peaks_sources = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
+        alphacsc_atoms_properties = xr.DataArray(
+            data=np.zeros(
+                (len(sensors), n_alphacsc_atoms,
+                 len(alphacsc_atoms_properties_coords))),
+            dims=("sensors", "alphacsc_atom", "alphacsc_atom_property"),
             coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="ica_peaks_sources")
+                "sensors": sensors,
+                "alphacsc_atom": alphacsc_atoms_coords,
+                "alphacsc_atom_property": alphacsc_atoms_properties_coords,
+            },
+            name="alphacsc_atoms_properties")
 
-        ica_peaks_localization = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks, 3)),
-            dims=("run", "sensors", "ica_timestamps", "mni_coordinates"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks),
-                "mni_coordinates": np.arange(3)
-                },
-            name="ica_peaks_localization")
+        # stc_clusters_library = xr.DataArray(
+        #     data=np.zeros((len(vertices), n_alphacsc_atoms, len(mne_times))),
+        # )
 
-        ica_peaks_subcorr = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="ica_peaks_subcorr")
-
-        ica_peaks_selected = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="ica_peaks_selected")
-
-        # --------- AlphaCSC decomposition --------- #
-
-        u_hat = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_atoms, max(self.n_sensors_by_types))),
-            dims=("run", "sensors", "atom", "channels"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "atom": np.arange(self.n_atoms),
-                },
-            attrs={
-                "n_grad": self.n_channels_grad,
-                "n_mag": self.n_channels_mag},
-            name="u_hat")
-
-        n_samples = np.int32(self.atom_length * self.sfreq2)
-        v_hat = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_atoms, n_samples)),
-            dims=("run", "sensors", "atom", "atom_times"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "atom": np.arange(self.n_atoms),
-                "atom_times": np.linspace(
-                    0, self.atom_length, n_samples)
-                },
-            name="v_hat")
-
-        alphacsc_components_localization = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms, 3)),
-            dims=("run", "sensors", "atom", "mni_coordinates"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "atom": np.arange(self.n_atoms),
-                "mni_coordinates": np.arange(3)
-                },
-            name="alphacsc_components_localization")
-
-        alphacsc_components_gof = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types, self.n_atoms)),
-            dims=("run", "sensors", "atom"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "atom": np.arange(self.n_atoms)
-                },
-            name="alphacsc_components_gof")
-
-        # --------- AlphaCSC events alignment and clustering --------- #
-
-        alphacsc_detections_timestamps = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            attrs={
-                "sfreq": self.sfreq2
-                },
-            name="alphacsc_detections_timestamps")
-
-        alphacsc_detections_goodness = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="alphacsc_detections_goodness")
-
-        alphacsc_detections_atom = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="alphacsc_detections_atom")
-
-        alphacsc_detections_z_values = xr.DataArray(
-            np.zeros((self.n_runs, self.n_sensor_types,
-                      self.n_detected_peaks)),
-            dims=("run", "sensors", "ica_timestamps"),
-            coords={
-                "run": np.arange(self.n_runs),
-                "sensors": ['grad', 'mag'],
-                "ica_timestamps": np.arange(self.n_detected_peaks)
-                },
-            name="alphacsc_detections_z_values")
-
-        # --------- Clusters library --------- #
-
-        clusters_library_timestamps = xr.DataArray(
-            np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_detections"),
-            coords={
-                "clusters_library_detections": np.arange(
-                    self.n_clusters_library_timepoints)
-                },
-            attrs={
-                "sfreq": self.sfreq2
-                },
-            name="clusters_library_timestamps")
-
-        clusters_library_atom = xr.DataArray(
-            np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_detections"),
-            coords={
-                "clusters_library_detections": np.arange(
-                    self.n_clusters_library_timepoints)
-                },
-            name="clusters_library_atom")
-
-        clusters_library_sensors = xr.DataArray(
-            np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_detections"),
-            coords={
-                "clusters_library_detections": np.arange(
-                    self.n_clusters_library_timepoints)
-                },
-            name="clusters_library_sensors")
-
-        clusters_library_run = xr.DataArray(
-            np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_detections"),
-            coords={
-                "clusters_library_detections": np.arange(
-                    self.n_clusters_library_timepoints)
-                },
-            name="clusters_library_run")
-
-        clusters_library_cluster_id = xr.DataArray(
-            np.zeros(self.n_clusters_library_timepoints),
-            dims=("clusters_library_detections"),
-            coords={
-                "clusters_library_detections": np.arange(
-                    self.n_clusters_library_timepoints)
-                },
-            name="clusters_library_cluster_id")
-
-        # --------- Irritative zone prediction --------- #
-
-        iz_predictions = xr.DataArray(
-            np.zeros((4, self.n_fwd_sources)),
-            dims=("prediction_type", "fwd_source"),
-            coords={
-                "prediction_type": ['alphacsc_peak', 'alphacsc_slope',
-                                    'manual', 'resection']
-                },
-            name="iz_predictions")
-
-        ds = xr.Dataset(data_vars={
-            "ica_sources": ica_sources,
-            "ica_components": ica_components,
-            "ica_components_localization": ica_components_localization,
-            "ica_components_gof": ica_components_gof,
-            "ica_components_kurtosis": ica_components_kurtosis,
-            "ica_components_selected": ica_components_selected,
-            "ica_peaks_timestamps": ica_peaks_timestamps,
-            "ica_peaks_sources": ica_peaks_sources,
-            "ica_peaks_localization": ica_peaks_localization,
-            "ica_peaks_subcorr": ica_peaks_subcorr,
-            "ica_peaks_selected": ica_peaks_selected,
-            "alphacsc_u_hat": u_hat,
-            "alphacsc_v_hat": v_hat,
-            "alphacsc_components_localization":
-                alphacsc_components_localization,
-            "alphacsc_components_gof": alphacsc_components_gof,
-            "alphacsc_detections_timestamps": alphacsc_detections_timestamps,
-            "alphacsc_detections_atom": alphacsc_detections_atom,
-            "alphacsc_detections_z_values": alphacsc_detections_z_values,
-            "alphacsc_detections_goodness": alphacsc_detections_goodness,
-            "clusters_library_timestamps": clusters_library_timestamps,
-            "clusters_library_atom": clusters_library_atom,
-            "clusters_library_sensors": clusters_library_sensors,
-            "clusters_library_run": clusters_library_run,
-            "clusters_library_cluster_id": clusters_library_cluster_id,
-            "iz_predictions": iz_predictions
-            })
+        ds = xr.merge([
+            ica_sources,
+            ica_components,
+            ica_component_properties,
+            ica_component_selection,
+            detection_properties,
+            alphacsc_z_hat,
+            alphacsc_v_hat,
+            alphacsc_u_hat,
+            alphacsc_atoms_properties
+            ])
         return ds
 
     def read_case_info(self, fif_file_path: Union[str, Path],
