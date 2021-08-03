@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from megspikes.database.database import Database
+from megspikes.database.database import Database, select_sensors
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
                                            PeakDetection)
@@ -29,51 +29,56 @@ def spikes_waveforms():
 @pytest.fixture(name="db")
 def make_database():
     n_ica_comp = 4
-    db = Database(meg_data_length=10_000, n_ica_components=n_ica_comp)
+    db = Database(times=np.linspace(0, 10, 10_000),
+                  n_ica_components=n_ica_comp)
     return db
 
 
 @pytest.fixture(name="dataset")
 def make_dataset(db, fname):
     n_ica_comp = 4
-    n_channels = 204
     raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
     raw_fif.save(fname=fname / 'raw_test.fif', overwrite=True)
 
     ds = db.make_empty_dataset()
-    for sens in [0, 1]:
-        sel = dict(run=0, sensors=sens)
+    for sens in db.sensors:
+        _, sel = select_sensors(ds, sens, "aspire_alphacsc_run_1")
         name = "ica_sources"
         ica_sources = np.array([cardio_ts]*n_ica_comp)*5
-        ds[sel][name][:, :] = ica_sources
+        ds.loc[sel][name][:, :] = ica_sources
         name = "ica_components"
-        ds[sel][name][:, :] = np.random.sample((n_ica_comp, n_channels))
-        name = "ica_components_localization"
-        ds[sel][name][:, :] = np.random.sample((n_ica_comp, 3))
-        name = "ica_components_gof"
-        ds[sel][name][:] = np.array([72., 85., 94., 99.])
-        name = "ica_components_kurtosis"
-        ds[sel][name][:] = np.array([2, 0.5, 8, 0])
+        ds.loc[sel][name][:, :] = np.random.sample(ds.loc[sel][name].shape)
+        name = "ica_component_properties"
+        ds.loc[sel][name].loc[
+            dict(ica_component_property=['mni_x', 'mni_y', 'mni_z'])][
+                :, :] = np.random.sample((n_ica_comp, 3))
+        name = "ica_component_properties"
+        ds.loc[sel][name].loc[
+            :, 'gof'] = np.array([72., 85., 94., 99.])
+        name = "ica_component_properties"
+        ds.loc[sel][name].loc[
+            :, 'kurtosis'] = np.array([2, 0.5, 8, 0])
     return ds
 
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
 def test_ica_decomposition(db, dataset, fname, sensors):
+    pipeline = "aspire_alphacsc_run_1"
     n_ica_comp = 4
-    dataset[dict(run=0, sensors=0)].ica_components.values *= 0
-    dataset[dict(run=0, sensors=1)].ica_components.values *= 0
+    _, sel = select_sensors(dataset, 'grad', pipeline)
+    dataset.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(dataset, 'mag', pipeline)
+    dataset.loc[sel].ica_components.values *= 0
 
     pd = PrepareData(data_file=fname / 'raw_test.fif', sensors=sensors)
-    ds_channles = db.select_sensors(dataset, sensors, 0)
+    ds_channles = db.select_sensors(dataset, sensors, pipeline)
     decomposition = DecompositionICA(n_components=n_ica_comp)
     (ds_channles, data) = pd.fit_transform(ds_channles)
-    _ = decomposition.fit_transform((ds_channles, data))
-    assert dataset.ica_sources.loc[sensors, :, :].any()
-
-    assert dataset.ica_components.loc[sensors, 0, 50].values != 0
-    if sensors == 'mag':
-        assert dataset.ica_components.loc[sensors, 0, 200].values == 0
+    (ds_channles, data) = decomposition.fit_transform((ds_channles, data))
+    assert ds_channles.ica_sources.loc[:, :].any()
+    assert ds_channles.ica_components.loc[:, :].any()
+    assert ds_channles.ica_component_properties.loc[:, 'kurtosis'].any()
 
 
 @pytest.mark.happy

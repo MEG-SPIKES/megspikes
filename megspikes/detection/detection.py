@@ -23,28 +23,23 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         self.n_components = n_components
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self._check_input(X[0], X[1])
-        ica = mne.preprocessing.ICA(
+        self.ica = mne.preprocessing.ICA(
             n_components=self.n_components, random_state=97)
-        ica.fit(X[1])
-        components = ica.get_components().T
-        (_, n_channels) = components.shape
-        X[0]['ica_components'][:, :n_channels] = components
-        # ICA timeseries [components x times]
-        X[0]['ica_sources'][:, :] = ica.get_sources(X[1]).get_data()
-        X[0]['ica_components_kurtosis'][:] = ica.score_sources(
-            X[1], score_func=stats.kurtosis)
-        # ica.score_sources(data, score_func=stats.skew)
-        self._check_output(X[0])
+        self.ica.fit(X[1])
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        components = self.ica.get_components().T
+        X[0]['ica_components'][:] = components
+        # ICA timeseries [components x times]
+        X[0]['ica_sources'][:, :] = self.ica.get_sources(X[1]).get_data()
+        X[0]['ica_component_properties'].loc[
+            :, 'kurtosis'] = self.ica.score_sources(
+            X[1], score_func=stats.kurtosis)
+        # ica.score_sources(data, score_func=stats.skew)
+        self._check_output(X[0])
         logging.info("ICA decomposition is done.")
         return X
-
-    def _check_input(self, ds, raw):
-        assert ds['ica_sources'].attrs['sfreq'] == raw.info['sfreq'], (
-            "sfreq in ICA sources is incorrect")
 
     def _check_output(self, ds):
         components = ds['ica_components'].values
@@ -53,7 +48,8 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         sources = ds['ica_sources'].values
         assert np.max(sources) != np.min(sources), (
             "ICA sources data are all the same")
-        kurtosis = ds['ica_components_kurtosis'].values
+        kurtosis = ds['ica_component_properties'].loc[
+            :, 'kurtosis'].values
         assert np.max(kurtosis) != np.min(kurtosis), (
             "Kurtosis values are all the same")
 
