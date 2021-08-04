@@ -284,8 +284,8 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         """
         source_ind = np.where(selected.flatten() > 0)[0]
 
-        timestamps = np.array([], dtype=np.int32)
-        channels = np.array([], dtype=np.int32)
+        timestamps = np.array([], dtype=np.int64)
+        channels = np.array([], dtype=np.int64)
 
         # Loop to find required amount of the detections
         n_detections = 0
@@ -308,8 +308,8 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                 if self.prominence < 2:
                     n_detections = self.n_detections_threshold
                 else:
-                    timestamps = np.array([])
-                    channels = np.array([])
+                    timestamps = np.array([], dtype=np.int64)
+                    channels = np.array([], dtype=np.int64)
         sort_unique_ind = np.unique(timestamps, return_index=True)[1]
         return timestamps[sort_unique_ind], channels[sort_unique_ind]
 

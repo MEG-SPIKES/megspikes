@@ -335,6 +335,8 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             pipeline=self.pipeline, sensors=self.sensors)
         selection_pipe_ch = dict(
             pipeline=self.pipeline, channel=selection_ch)
+
+        ds['ica_sources'].loc[selection_sens] = X[0].ica_sources
         ds['ica_components'].loc[:, selection_ch] = X[0].ica_components
         ds['ica_component_properties'].loc[
             selection_sens] = X[0].ica_component_properties

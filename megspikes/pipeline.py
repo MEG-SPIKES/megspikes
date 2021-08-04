@@ -90,5 +90,6 @@ def aspike_alphacsc_pipeline(case: CaseManager, n_ica_components: int = 20,
         #     db_name_clusters='clusters_library_cluster_id',
         #     detection_sfreq=resample)),
         # ('predict_IZ', PredictIZClusters(case=case)),
-        ('save_dataset', SaveFullDataset(dataset=case.dataset))])
+        # ('save_dataset', SaveFullDataset(dataset=case.dataset))
+        ])
     return pipe
