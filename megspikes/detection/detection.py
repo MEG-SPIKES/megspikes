@@ -14,6 +14,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
 
 from ..utils import create_epochs
+from ..database.database import (check_and_read_from_dataset,
+                                 check_and_write_to_dataset)
 
 mne.set_log_level("ERROR")
 
@@ -29,29 +31,20 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        components = self.ica.get_components().T
-        X[0]['ica_components'][:] = components
-        # ICA timeseries [components x times]
-        X[0]['ica_sources'][:, :] = self.ica.get_sources(X[1]).get_data()
-        X[0]['ica_component_properties'].loc[
-            :, 'kurtosis'] = self.ica.score_sources(
-            X[1], score_func=stats.kurtosis)
+        # ica components
+        check_and_write_to_dataset(
+            X[0], 'ica_components', self.ica.get_components().T)
+        # ICA timeseries, shape=(components, times)
+        check_and_write_to_dataset(
+            X[0], 'ica_sources', self.ica.get_sources(X[1]).get_data())
+        # compute kurtosis for each ica component
+        check_and_write_to_dataset(
+            X[0], 'ica_component_properties',
+            self.ica.score_sources(X[1], score_func=stats.kurtosis),
+            dict(ica_component_property='kurtosis'))
         # ica.score_sources(data, score_func=stats.skew)
-        self._check_output(X[0])
         logging.info("ICA decomposition is done.")
         return X
-
-    def _check_output(self, ds):
-        components = ds['ica_components'].values
-        assert np.max(components) != np.min(components), (
-            "Components data are all the same")
-        sources = ds['ica_sources'].values
-        assert np.max(sources) != np.min(sources), (
-            "ICA sources data are all the same")
-        kurtosis = ds['ica_component_properties'].loc[
-            :, 'kurtosis'].values
-        assert np.max(kurtosis) != np.min(kurtosis), (
-            "Kurtosis values are all the same")
 
 
 class ComponentsSelection(TransformerMixin, BaseEstimator):
@@ -97,18 +90,23 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        self._check_input(X[0])
-        components = X[0]['ica_components'].values
-        kurtosis = X[0]['ica_components_kurtosis'].values
-        gof = X[0]['ica_components_gof'].values
+        # load data from database
+        components = check_and_read_from_dataset(
+            X[0], 'ica_components')
+        kurtosis = check_and_read_from_dataset(
+            X[0], 'ica_component_properties',
+            dict(ica_component_property='kurtosis'))
+        gof = check_and_read_from_dataset(
+            X[0], 'ica_component_properties',
+            dict(ica_component_property='gof'))
 
         # Run the ICA components selection
         selected = self.select_ica_components(
             components, kurtosis, gof)
 
-        # Write the selected components to the database
-        X[0]['ica_components_selected'][:] = selected
-        self._check_output(X[0])
+        # Write the selected components to the dataset
+        check_and_write_to_dataset(
+            X[0], 'ica_component_selection', selected)
         logging.info("ICA components selection is done.")
         return X
 
@@ -180,24 +178,6 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                 :self.n_components_if_nothing_else]] = 1
 
         return selected
-
-    def _check_input(self, ds):
-        components = ds['ica_components'].values
-        assert np.max(components) != np.min(components), (
-            "Components data are all the same")
-        kurtosis = ds['ica_components_kurtosis'].values
-        assert np.max(kurtosis) != np.min(kurtosis), (
-            "Kurtosis values are all the same")
-        gof = ds['ica_components_gof'].values
-        assert np.max(gof) != np.min(gof), (
-            "GOF values are all the same")
-        assert components.shape[1] > self.n_runs, (
-            "More runs than components")
-
-    def _check_output(self, ds):
-        selected = ds['ica_components_selected'].values
-        assert sum(selected) > 0, (
-            "ICA components for analysis are not selected")
 
 
 class PeakDetection(TransformerMixin, BaseEstimator):

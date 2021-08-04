@@ -14,6 +14,8 @@ from scipy import linalg, sparse
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..casemanager.casemanager import CaseManager
+from ..database.database import (check_and_read_from_dataset,
+                                 check_and_write_to_dataset)
 from ..utils import create_epochs, onset_slope_timepoints
 
 mne.set_log_level("ERROR")
@@ -139,6 +141,7 @@ class Localization():
 
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
+    """ Localize ICA components using mne.fit_dipole()."""
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
         self.setup_fwd(case, sensors)
 
@@ -146,18 +149,29 @@ class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        components = X[0]['ica_components'].values.T
+        # read from database ica components
+        components = check_and_read_from_dataset(
+            X[0], 'ica_components')
+        components = components.T
+        # create EvokedArray
         evoked = mne.EvokedArray(components, self.info)
+
         dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
-        ds_coords_loc = dict(
-            ica_component_property=['mni_x', 'mni_y', 'mni_z'])
+
+        locs = np.zeros((len(dip), 3))
+        gof = np.zeros(len(dip))
         for n, d in enumerate(dip):
-            pos_mni = mne.head_to_mni(
+            locs[n, :] = mne.head_to_mni(
                 d.pos[0],  self.case_name, self.fwd['mri_head_t'],
                 subjects_dir=self.freesurfer_dir)
-            X[0]['ica_component_properties'].loc[
-                ds_coords_loc][n, :] = pos_mni
-            X[0]['ica_component_properties'].loc[n, 'gof'] = d.gof[0]
+            gof[n] = d.gof[0]
+
+        check_and_write_to_dataset(
+            X[0], 'ica_component_properties', locs,
+            dict(ica_component_property=['mni_x', 'mni_y', 'mni_z']))
+        check_and_write_to_dataset(
+            X[0], 'ica_component_properties', gof,
+            dict(ica_component_property='gof'))
         logging.info("ICA components are localized.")
         return X
 

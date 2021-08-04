@@ -41,13 +41,13 @@ def make_dataset(db, fname, dataset):
     raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
     raw_fif.save(fname=fname / 'raw_test.fif', overwrite=True)
     for sens in db.sensors:
-        dataset["ica_sources"].loc[
+        ds["ica_sources"].loc[
             dict(sensors=sens)
             ] = np.array([cardio_ts]*n_ica_comp)*5
-        dataset["ica_component_properties"].loc[
+        ds["ica_component_properties"].loc[
             dict(sensors=sens, ica_component_property="gof")
             ] = np.array([72., 85., 94., 99.])
-        dataset["ica_component_properties"].loc[
+        ds["ica_component_properties"].loc[
             dict(sensors=sens, ica_component_property="kurtosis")
             ] = np.array([2, 0.5, 8, 0])
     return ds
@@ -77,15 +77,16 @@ def test_ica_decomposition(db, ds, fname, sensors):
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_components_selection(dataset, sensors):
+def test_components_selection(ds, sensors):
     pipeline = "aspire_alphacsc_run_1"
-    ds_channles, _ = select_sensors(dataset, sensors, pipeline)
+    ds_channles, _ = select_sensors(ds, sensors, pipeline)
+    ds_channles['ica_component_selection'] *= 0
     selection = ComponentsSelection()
     (results, _) = selection.fit_transform((ds_channles, None))
-    assert sum(results["ica_components_selected"].values) == 2
+    assert sum(results['ica_component_selection'].values) == 2
 
     pipeline = "aspire_alphacsc_run_2"
-    ds_channles, _ = select_sensors(dataset, sensors, pipeline)
+    ds_channles, _ = select_sensors(ds, sensors, pipeline)
     selection = ComponentsSelection(run=1)
     (results, _) = selection.fit_transform((ds_channles, None))
 
