@@ -251,7 +251,8 @@ class LoadDataset(TransformerMixin, BaseEstimator):
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
         ds = xr.load_dataset(self.dataset)
-        return (select_sensors(ds, self.sensors, self.pipeline), X[1])
+        ds_channels, _ = select_sensors(ds, self.sensors, self.pipeline)
+        return (ds_channels, X[1])
 
 
 class SaveDataset(TransformerMixin, BaseEstimator):
@@ -269,7 +270,25 @@ class SaveDataset(TransformerMixin, BaseEstimator):
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
         ds = xr.load_dataset(self.dataset)
         _, selection = select_sensors(ds, self.sensors, self.pipeline)
-        ds.loc[selection].assign(X[0])
+        # TODO: avoid manual update
+        # Won't working because selection is no applicable to all ds variables
+        # ds.loc[selection] = ds_grad
+        selection_ch = ds.attrs[self.sensors]
+        selection_sens = dict(sensors=self.sensors)
+        selection_pipe_sens = dict(
+            pipeline=self.pipeline, sensors=self.sensors)
+        selection_pipe_ch = dict(
+            pipeline=self.pipeline, channel=selection_ch)
+        ds["ica_components"].loc[:, selection_ch] = X[0].ica_components
+        ds['ica_component_properties'].loc[
+            selection_sens] = X[0].ica_component_properties
+        ds['ica_component_selection'].loc[
+            selection_pipe_sens] = X[0].ica_component_selection
+        ds['detection_properties'].loc[
+            selection_pipe_sens] = X[0].detection_properties
+        ds['alphacsc_z_hat'].loc[selection_pipe_sens] = X[0].alphacsc_z_hat
+        ds['alphacsc_v_hat'].loc[selection_pipe_sens] = X[0].alphacsc_v_hat
+        ds['alphacsc_u_hat'].loc[selection_pipe_ch] = X[0].alphacsc_u_hat
         ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                      engine="netcdf4")
         return X
@@ -293,3 +312,43 @@ def select_sensors(ds: xr.Dataset, sensors: str,
     channels = ds.channel_names.attrs[sensors]
     selection = dict(pipeline=pipeline, sensors=sensors, channel=channels)
     return ds.loc[selection], selection
+
+
+def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
+                                selection: Union[Dict[str, str], None] = None
+                                ) -> np.ndarray:
+    if not isinstance(da_name, str):
+        raise RuntimeError(f"{da_name} has type {type(da_name)}")
+    assert da_name in ds.data_vars, (
+        f"{da_name} not in dataset")
+
+    if isinstance(selection, dict):
+        data = ds[da_name].loc[selection].values.copy()
+        assert np.max(data) != np.min(data), (
+            f"{da_name}.loc[{selection}] values are all the same")
+    else:
+        data = ds[da_name].values.copy()
+        assert np.max(data) != np.min(data), (
+            f"{da_name} values are all the same")
+    return data
+
+
+def check_and_write_to_dataset(ds: xr.Dataset, da_name: str,
+                               variable: np.ndarray,
+                               selection: Union[Dict[str, Union[
+                                   str, List[str]]], None] = None
+                               ) -> None:
+    # NOTE: there is no output, operation is done inplace
+    if not isinstance(da_name, str):
+        raise RuntimeError(f"{da_name} has type {type(da_name)}")
+    assert da_name in ds.data_vars, (
+        f"{da_name} not in dataset")
+
+    if isinstance(selection, dict):
+        assert ds[da_name].loc[selection].shape == variable.shape, (
+            f"Wrong shape of the variable to write in {da_name}")
+        ds[da_name].loc[selection].values = variable
+    else:
+        assert ds[da_name].shape == variable.shape, (
+            f"Wrong shape of the variable to write in {da_name}")
+        ds[da_name].values = variable
