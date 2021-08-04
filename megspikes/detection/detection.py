@@ -31,6 +31,8 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        assert X[0].time.attrs['sfreq'] != X[1].info['sfreq'], (
+            "Wrong sfreq of the fif file or database time coordinate")
         # ica components
         check_and_write_to_dataset(
             X[0], 'ica_components', self.ica.get_components().T)
@@ -205,26 +207,32 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         self.n_detections_threshold = n_detections_threshold
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self._check_input(X[0])
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        sources = X[0]["ica_sources"].values
-        selected = X[0]["ica_components_selected"].values
+        sources = check_and_read_from_dataset(
+            X[0], 'ica_sources')
+        selected = check_and_read_from_dataset(
+            X[0], 'ica_component_selection')
 
-        timestamps, channels = self.find_ica_peaks(sources, selected)
+        detections = np.zeros_like(X[0].time.values)
+        ica_index = np.zeros_like(X[0].time.values)
+        # find timestamps and corresponding sources
+        det_ind, ica_ind = self.find_ica_peaks(sources, selected)
+        detections[det_ind] = 1
+        ica_index[det_ind] = ica_ind
 
-        # TODO: accept more flexible number of peaks selection
-        if len(timestamps) > self.n_detections_threshold:
-            n_det = self.n_detections_threshold
-        else:
-            n_det = len(timestamps)
+        check_and_write_to_dataset(
+            X[0], 'detection_properties',
+            detections,
+            dict(detection_property='detection'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties',
+            detections,
+            dict(detection_property='detection'))
 
-        X[0]['ica_peaks_timestamps'][:n_det] = timestamps[:n_det]
-        X[0]['ica_peaks_timestamps'].attrs["filtering"] = (
+        X[0]['detection_properties'].attrs["ica_components_filtering"] = (
             self.h_filter, self.l_filter)
-        X[0]['ica_peaks_sources'][:n_det] = channels[:n_det]
-        self._check_output(X[0])
         logging.info("ICA peaks detection is done.")
         return X
 
@@ -242,12 +250,14 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         Returns
         -------
         np.ndarray
-            detected peaks
+            detected peaks index
+        np.ndarray
+            source index for each peak
         """
         source_ind = np.where(selected.flatten() > 0)[0]
 
-        timestamps = np.array([])
-        channels = np.array([])
+        timestamps = np.array([], dtype=np.int32)
+        channels = np.array([], dtype=np.int32)
 
         # Loop to find required amount of the detections
         n_detections = 0
@@ -272,8 +282,8 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                 else:
                     timestamps = np.array([])
                     channels = np.array([])
-        sort_time_ind = np.argsort(timestamps)
-        return timestamps[sort_time_ind], channels[sort_time_ind]
+        sort_unique_ind = np.unique(timestamps, return_index=True)[1]
+        return timestamps[sort_unique_ind], channels[sort_unique_ind]
 
     def _find_peaks(self, data):
         freq = np.array([self.h_filter, self.l_filter]) / (self.sfreq / 2.0)
@@ -290,24 +300,6 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         window = self.sfreq
         peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
         return peaks, props
-
-    def _check_input(self, ds):
-        sources = ds["ica_sources"].values
-        assert np.max(sources) != np.min(sources), (
-            "ICA sources values are all the same")
-        for n, s in enumerate(sources):
-            assert np.max(s) != np.min(s), (
-                f"ICA source #{n} values are all the same")
-        selected = ds['ica_components_selected'].values
-        assert sum(selected) > 0, (
-            "ICA components for analysis are not selected")
-
-    def _check_output(self, ds):
-        times = ds['ica_peaks_timestamps']
-        assert sum(times.values != 0) > 0, (
-            "No ICA peaks detected. Width parameter value may be too large.")
-        assert times.attrs['sfreq'] == ds['ica_sources'].attrs['sfreq'], (
-            "sfreq in ICA peaks timepoints is incorrect")
 
 
 class CleanDetections(TransformerMixin, BaseEstimator):

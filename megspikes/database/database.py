@@ -37,8 +37,15 @@ class Database():
 
     def make_empty_dataset(self) -> xr.Dataset:
         # time coordinate
-        t = self.times
         sfreq = self.sfreq2
+        t = xr.DataArray(
+            data=self.times,
+            dims=("time"),
+            attrs={
+                'sfreq': sfreq,
+                'units': 'seconds'
+            },
+            name='time')
         meg_data_length = len(t)
 
         # channels and sensors
@@ -56,16 +63,40 @@ class Database():
         self.pipelines_names = pipelines
 
         # detected evensts properties
-        detection_properties = [
-            'ica_component', 'mni_x', 'mni_y', 'mni_z', 'subcorr',
-            'selected_for_alphacsc', 'alphacsc_atom', 'alphacsc_alignment',
-            'clust_lib']
+        detection_properties = xr.DataArray(
+            data=['detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
+                  'subcorr', 'selected_for_alphacsc', 'alphacsc_atom',
+                  'alphacsc_alignment', 'clust_lib'],
+            dims=('detection_property'),
+            attrs={
+                'sfreq': sfreq,
+                'ica_component_description': (
+                    'Index of the ICA component where the '
+                    'timestamp was detected'),
+                'mni_x_units': 'mm',
+                'mni_y_units': 'mm',
+                'mni_z_units': 'mm',
+                'subcorr': ('The measurement of the RAP MUSIC quality. '
+                            'Larger values correspond to the better solution'),
+                'subcorr_units': 'arbitrary units',
+                },
+            name='detection_properties')
 
         # ica components
         n_ica_components = self.n_ica_components
         ica_components_coords = np.arange(n_ica_components)
-        ica_component_properties_coords = [
-            'mni_x', 'mni_y', 'mni_z', 'gof', 'kurtosis']
+        ica_component_properties_coords = xr.DataArray(
+            data=['mni_x', 'mni_y', 'mni_z', 'gof', 'kurtosis'],
+            dims=('ica_component_property'),
+            attrs={
+                'mni_x_units': 'mm',
+                'mni_y_units': 'mm',
+                'mni_z_units': 'mm',
+                'gof': ('The measurement of the dipole fitting quality.'
+                        'Larger values correspond to the better solution'),
+                'gof_units': 'percentage between [0, 100]'
+                },
+            name='ica_component_properties_coords')
 
         # alphacsc atoms
         n_alphacsc_atoms = self.n_atoms
@@ -73,8 +104,18 @@ class Database():
         atom_length = int(self.atom_length * sfreq)
         atom_v_times = np.linspace(
             0, round(atom_length / sfreq, 0), atom_length)
-        alphacsc_atoms_properties_coords = [
-            'mni_x', 'mni_y', 'mni_z', 'gof']
+        alphacsc_atoms_properties_coords = xr.DataArray(
+            data=['mni_x', 'mni_y', 'mni_z', 'gof'],
+            dims=('alphacsc_atom_property'),
+            attrs={
+                'mni_x_units': 'mm',
+                'mni_y_units': 'mm',
+                'mni_z_units': 'mm',
+                'gof': ('The measurement of the dipole fitting quality.'
+                        'Larger values correspond to the better solution'),
+                'gof_units': 'percentage between [0, 100]'
+                },
+            name='alphacsc_atoms_properties_coords')
 
         # vertices = np.arange(20_000)  # vert no
         # sfreq2 = 1000
@@ -112,6 +153,9 @@ class Database():
                 "sensors": sensors,
                 "ica_component": ica_components_coords,
                 "time": t
+            },
+            attrs={
+                'units': 'AU'
             },
             name="ica_sources")
 
@@ -161,6 +205,9 @@ class Database():
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "time": t
             },
+            attrs={
+                'units': 'AU'
+            },
             name="alphacsc_z_hat")
 
         alphacsc_v_hat = xr.DataArray(
@@ -172,6 +219,9 @@ class Database():
                 "sensors": sensors,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "atom_v_time": atom_v_times
+            },
+            attrs={
+                'units': 'AU'
             },
             name="alphacsc_v_hat")
 
@@ -185,7 +235,8 @@ class Database():
             },
             attrs={
                 'grad': grad_inx,
-                'mag': mag_inx
+                'mag': mag_inx,
+                'units': 'AU'
             },
             name="alphacsc_u_hat")
 
@@ -280,7 +331,7 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             pipeline=self.pipeline, sensors=self.sensors)
         selection_pipe_ch = dict(
             pipeline=self.pipeline, channel=selection_ch)
-        ds["ica_components"].loc[:, selection_ch] = X[0].ica_components
+        ds['ica_components'].loc[:, selection_ch] = X[0].ica_components
         ds['ica_component_properties'].loc[
             selection_sens] = X[0].ica_component_properties
         ds['ica_component_selection'].loc[
@@ -316,7 +367,7 @@ def select_sensors(ds: xr.Dataset, sensors: str,
 
 
 def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
-                                selection: Union[Dict[str, str], None] = None
+                                selection: Union[Dict[Any, str], None] = None
                                 ) -> np.ndarray:
     if not isinstance(da_name, str):
         raise RuntimeError(f"{da_name} has type {type(da_name)}")
@@ -329,14 +380,18 @@ def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
             f"{da_name}.loc[{selection}] values are all the same")
     else:
         data = ds[da_name].values.copy()
-        assert np.max(data) != np.min(data), (
-            f"{da_name} values are all the same")
+        if da_name != 'ica_component_selection':
+            assert np.max(data) != np.min(data), (
+                f"{da_name} values are all the same")
+        else:
+            assert data.any(), (
+                f"{da_name} values are all zeros")
     return data
 
 
 def check_and_write_to_dataset(ds: xr.Dataset, da_name: str,
                                variable: np.ndarray,
-                               selection: Union[Dict[str, Union[
+                               selection: Union[Dict[Any, Union[
                                    str, List[str]]], None] = None
                                ) -> None:
     # NOTE: there is no output, operation is done inplace

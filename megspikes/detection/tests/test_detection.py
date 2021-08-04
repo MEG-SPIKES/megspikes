@@ -105,14 +105,13 @@ def test_components_selection_detailed(run, n_runs, n_components):
 
 
 @pytest.mark.happy
-def test_peaks_detection(db, dataset):
-    name = "ica_components_selected"
-    dataset[name][:] = np.array([1., 1., 1., 1.])
-
-    ds = db.select_sensors(dataset, 'grad', 0)
+def test_peaks_detection(db, ds):
+    ds['ica_component_selection'] *= 0
+    ds['ica_component_selection'] += 1
+    ds_grad = db.select_sensors(ds, 'grad', "aspire_alphacsc_run_1")
     peak_detection = PeakDetection(prominence=2., width=1.)
-    (results, _) = peak_detection.fit_transform((ds, None))
-    assert results["ica_peaks_timestamps"].values.any()
+    (results, _) = peak_detection.fit_transform((ds_grad, None))
+    # assert results["ica_peaks_timestamps"].values.any()
 
 
 @pytest.mark.parametrize('prominence', [1, 2, 4, 7.])
@@ -133,7 +132,7 @@ def test_peaks_detection_details(spikes, prominence, width):
 
     data = np.zeros((4, sfreq*3))
     data[:, sfreq:sfreq+500] = spikes
-    detected_peaks = peak_detection.find_ica_peaks(
+    (detected_peaks, channles) = peak_detection.find_ica_peaks(
         data, np.array([1, 1, 1, 1]))
     detected_peaks -= sfreq
     for i in true_peaks:
