@@ -53,6 +53,7 @@ class Database():
         pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
         pipelines += ["aspire_alphacsc_clusters_library"]
         pipelines += ["manual"]
+        self.pipelines_names = pipelines
 
         # detected evensts properties
         detection_properties = [
@@ -347,7 +348,7 @@ def check_and_write_to_dataset(ds: xr.Dataset, da_name: str,
     if isinstance(selection, dict):
         assert ds[da_name].loc[selection].shape == variable.shape, (
             f"Wrong shape of the variable to write in {da_name}")
-        ds[da_name].loc[selection].values = variable
+        ds[da_name].loc[selection] = variable
     else:
         assert ds[da_name].shape == variable.shape, (
             f"Wrong shape of the variable to write in {da_name}")

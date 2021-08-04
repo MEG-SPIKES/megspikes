@@ -5,7 +5,9 @@ import pytest
 import numpy as np
 import xarray as xr
 from megspikes.database.database import (Database, LoadDataset, SaveDataset,
-                                         select_sensors)
+                                         select_sensors,
+                                         check_and_read_from_dataset,
+                                         check_and_write_to_dataset)
 from megspikes.simulation.simulation import Simulation
 
 
@@ -81,3 +83,12 @@ def test_database(simulation):
     ds_saved = xr.load_dataset(simulation.case_manager.dataset)
     assert not np.isnan(ds_saved.ica_components.values).any()
     assert ds_saved.ica_components.values.all()
+
+    ica_comp = check_and_read_from_dataset(ds_saved, 'ica_components')
+    assert (ds_saved.ica_components.values == ica_comp).all()
+
+    check_and_write_to_dataset(
+        ds_mag, 'ica_component_properties', np.array([9]*20),
+        dict(ica_component_property="kurtosis"))
+    assert (ds_mag.ica_component_properties.loc[
+        dict(ica_component_property="kurtosis")].values == 9).all()

@@ -26,7 +26,7 @@ def spikes_waveforms():
     return np.load(spikes)
 
 
-@pytest.fixture(name="db")
+@pytest.fixture(scope="module", name="db")
 def make_database():
     n_ica_comp = 4
     db = Database(times=np.linspace(0, 10, 10_000),
@@ -34,45 +34,39 @@ def make_database():
     return db
 
 
-@pytest.fixture(name="dataset")
-def make_dataset(db, fname):
+@pytest.fixture(name="ds")
+def make_dataset(db, fname, dataset):
+    ds = dataset.copy(deep=True)
     n_ica_comp = 4
     raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
     raw_fif.save(fname=fname / 'raw_test.fif', overwrite=True)
-
-    ds = db.make_empty_dataset()
     for sens in db.sensors:
-        _, sel = select_sensors(ds, sens, "aspire_alphacsc_run_1")
-        name = "ica_sources"
-        ica_sources = np.array([cardio_ts]*n_ica_comp)*5
-        ds.loc[sel][name][:, :] = ica_sources
-        name = "ica_components"
-        ds.loc[sel][name][:, :] = np.random.sample(ds.loc[sel][name].shape)
-        name = "ica_component_properties"
-        ds.loc[sel][name].loc[
-            dict(ica_component_property=['mni_x', 'mni_y', 'mni_z'])][
-                :, :] = np.random.sample((n_ica_comp, 3))
-        name = "ica_component_properties"
-        ds.loc[sel][name].loc[
-            :, 'gof'] = np.array([72., 85., 94., 99.])
-        name = "ica_component_properties"
-        ds.loc[sel][name].loc[
-            :, 'kurtosis'] = np.array([2, 0.5, 8, 0])
+        dataset["ica_sources"].loc[
+            dict(sensors=sens)
+            ] = np.array([cardio_ts]*n_ica_comp)*5
+        dataset["ica_component_properties"].loc[
+            dict(sensors=sens, ica_component_property="gof")
+            ] = np.array([72., 85., 94., 99.])
+        dataset["ica_component_properties"].loc[
+            dict(sensors=sens, ica_component_property="kurtosis")
+            ] = np.array([2, 0.5, 8, 0])
     return ds
 
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_ica_decomposition(db, dataset, fname, sensors):
+def test_ica_decomposition(db, ds, fname, sensors):
     pipeline = "aspire_alphacsc_run_1"
     n_ica_comp = 4
-    _, sel = select_sensors(dataset, 'grad', pipeline)
-    dataset.loc[sel].ica_components.values *= 0
-    _, sel = select_sensors(dataset, 'mag', pipeline)
-    dataset.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(ds, 'grad', pipeline)
+    ds.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(ds, 'mag', pipeline)
+    ds.loc[sel].ica_components.values *= 0
 
     pd = PrepareData(data_file=fname / 'raw_test.fif', sensors=sensors)
-    ds_channles = db.select_sensors(dataset, sensors, pipeline)
+    ds_channles = db.select_sensors(ds, sensors, pipeline)
+    ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
+
     decomposition = DecompositionICA(n_components=n_ica_comp)
     (ds_channles, data) = pd.fit_transform(ds_channles)
     (ds_channles, data) = decomposition.fit_transform((ds_channles, data))
@@ -83,13 +77,15 @@ def test_ica_decomposition(db, dataset, fname, sensors):
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_components_selection(db, dataset, sensors):
-    ds_channles = db.select_sensors(dataset, sensors, 0)
+def test_components_selection(dataset, sensors):
+    pipeline = "aspire_alphacsc_run_1"
+    ds_channles, _ = select_sensors(dataset, sensors, pipeline)
     selection = ComponentsSelection()
     (results, _) = selection.fit_transform((ds_channles, None))
     assert sum(results["ica_components_selected"].values) == 2
 
-    ds_channles = db.select_sensors(dataset, sensors, 1)
+    pipeline = "aspire_alphacsc_run_2"
+    ds_channles, _ = select_sensors(dataset, sensors, pipeline)
     selection = ComponentsSelection(run=1)
     (results, _) = selection.fit_transform((ds_channles, None))
 
