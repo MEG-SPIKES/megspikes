@@ -271,10 +271,14 @@ class Database():
         return ds
 
     def read_case_info(self, fif_file_path: Union[str, Path],
-                       fwd: mne.Forward) -> None:
+                       fwd: mne.Forward,
+                       sfreq: Union[float, None] = None) -> None:
         if not Path(fif_file_path).is_file():
             raise RuntimeError("Fif file was not found")
         fif_file = mne.io.read_raw_fif(fif_file_path, preload=False)
+        if sfreq is not None:
+            fif_file.load_data()
+            fif_file = fif_file.resample(sfreq, npad="auto")
         info = fif_file.info
         # TODO: other sensors types
         for sens in ['grad', 'mag']:

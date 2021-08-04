@@ -31,7 +31,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        assert X[0].time.attrs['sfreq'] != X[1].info['sfreq'], (
+        assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
             "Wrong sfreq of the fif file or database time coordinate")
         # ica components
         check_and_write_to_dataset(
@@ -183,6 +183,34 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
 
 
 class PeakDetection(TransformerMixin, BaseEstimator):
+    """Detect peaks on the ICA components using scipy.signal.find_peaks method.
+
+    Parameters
+    ----------
+    sign : int, optional
+        Detect positive or negative peaks. Multiply the data by sign value,
+        by default -1
+    sfreq : int, optional
+        sample frequency of the ICA sources, by default 200
+    h_filter : float, optional
+        heighpass filter, by default 20.
+    l_filter : float, optional
+        lowpass filter, by default 90
+    filter_order : int, optional
+        Filter order, by default 3
+    prominence : float, optional
+        Amplitude of the peaks to detect. Prominence is decreased automatically
+        if the number of detection is less than n_detections_threshold,
+        by default 7.
+    wlen : float, optional
+        Refractory window around the detected peak, by default 2000.
+    rel_height : float, optional
+        [description], by default 0.5
+    width : float, optional
+        Width of the peak in samples, by default 10.
+    n_detections_threshold : int, optional
+        Minimal number of the detections, by default 2000
+    """
     def __init__(self,
                  sign: int = -1,
                  sfreq: int = 200,
