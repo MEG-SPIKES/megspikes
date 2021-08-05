@@ -43,7 +43,7 @@ class Database():
             dims=("time"),
             attrs={
                 'sfreq': sfreq,
-                'units': 'seconds'
+                # 'units': 'seconds'
             },
             name='time')
         meg_data_length = len(t)
