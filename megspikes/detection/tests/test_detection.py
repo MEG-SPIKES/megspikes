@@ -7,7 +7,9 @@ from megspikes.database.database import Database, select_sensors
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
                                            PeakDetection,
-                                           CleanDetections)
+                                           CleanDetections,
+                                           DecompositionAlphaCSC,
+                                           SelectAlphacscEvents)
 from megspikes.utils import PrepareData
 from megspikes.simulation.simulation import simulate_raw_fast
 
@@ -17,6 +19,13 @@ def sample_path():
     sample_path = Path(op.dirname(__file__)).parent.parent.parent
     sample_path = sample_path / 'tests_data' / 'test_detection'
     sample_path.mkdir(exist_ok=True, parents=True)
+    return sample_path
+
+
+@pytest.fixture(scope="module", name="test_sample_path")
+def sample_path2():
+    sample_path = Path(op.dirname(__file__)).parent.parent.parent
+    sample_path = sample_path / 'tests_data' / 'test_detection'
     return sample_path
 
 
@@ -156,3 +165,36 @@ def test_detection_cleaning_details(times, subcorr, selection,
                             n_cleaned_peaks=n_cleaned_peaks)
     result = clean.clean_detections(np.array(times), np.array(subcorr), 200.)
     assert (result == selection).all()
+
+
+@pytest.mark.happy
+@pytest.mark.parametrize("sensors", ["grad", "mag"])
+def test_alphacsc_decomposition(simulation, sensors):
+    pipeline = "aspire_alphacsc_run_1"
+    db = Database(n_atoms=3)
+    case = simulation.case_manager
+    db.read_case_info(case.fif_file, case.fwd['ico5'], 200)
+    ds = db.make_empty_dataset()
+    ds.to_netcdf(case.dataset)
+
+    pd = PrepareData(data_file=case.fif_file, sensors=sensors,
+                     resample=200.)
+    ds_channles = db.select_sensors(ds, sensors, pipeline)
+
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')] *= 0
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')][
+            [500, 600, 700]] = 1
+    (ds_channles, data) = pd.fit_transform(ds_channles)
+    alpha = DecompositionAlphaCSC()
+    results, raw = alpha.fit_transform((ds_channles, data))
+    assert True
+
+
+def test_alphacsc_events_selection():
+    pass
+
+
+def test_alphacsc_atom_goodness():
+    pass

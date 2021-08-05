@@ -441,9 +441,14 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         # Transform the full MEG file
         data = X[1].get_data(picks='meg')
         z_hat = self.cdl.transform(data[None, :])[0]
+        # align z-hat with MEG recording
+        full_time = data.shape[1]
+        atoms, times = z_hat.shape
+        _z_hat = np.zeros((atoms, full_time))
+        _z_hat[:, full_time-times:] = z_hat
 
         # Save results to dataset
-        check_and_write_to_dataset(X[0], 'alphacsc_z_hat', z_hat)
+        check_and_write_to_dataset(X[0], 'alphacsc_z_hat', _z_hat)
         check_and_write_to_dataset(X[0], 'alphacsc_v_hat', self.cdl.v_hat_)
         check_and_write_to_dataset(X[0], 'alphacsc_u_hat', self.cdl.u_hat_)
         del data
