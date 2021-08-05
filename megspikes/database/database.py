@@ -65,8 +65,8 @@ class Database():
         # detected evensts properties
         detection_properties = xr.DataArray(
             data=['detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
-                  'subcorr', 'selected_for_alphacsc', 'alphacsc_atom',
-                  'alphacsc_alignment', 'clust_lib'],
+                  'subcorr', 'selected_for_alphacsc', 'alphacsc_detection',
+                  'alphacsc_atom', 'ica_alphacsc_aligned'],
             dims=('detection_property'),
             attrs={
                 'sfreq': sfreq,
@@ -79,6 +79,12 @@ class Database():
                 'subcorr': ('The measurement of the RAP MUSIC quality. '
                             'Larger values correspond to the better solution'),
                 'subcorr_units': 'arbitrary units',
+                'selected_for_alphacsc': 'ICA peaks selected for AlphaCSC',
+                'alphacsc_detection': 'Final AlphaCSC detections',
+                'alphacsc_atom': ('AlphaCSC atom that corresponds to the '
+                                  'AlphaCSC detection'),
+                'alphacsc_ica_alignment': ('Alignment of the ICA components '
+                                           'that was done using AlphaCSC')
                 },
             name='detection_properties')
 
@@ -105,7 +111,7 @@ class Database():
         atom_v_times = np.linspace(
             0, round(atom_length / sfreq, 0), atom_length)
         alphacsc_atoms_properties_coords = xr.DataArray(
-            data=['mni_x', 'mni_y', 'mni_z', 'gof'],
+            data=['mni_x', 'mni_y', 'mni_z', 'gof', 'goodness'],
             dims=('alphacsc_atom_property'),
             attrs={
                 'mni_x_units': 'mm',
@@ -113,7 +119,8 @@ class Database():
                 'mni_z_units': 'mm',
                 'gof': ('The measurement of the dipole fitting quality.'
                         'Larger values correspond to the better solution'),
-                'gof_units': 'percentage between [0, 100]'
+                'gof_units': 'percentage between [0, 100]',
+                'goodness': 'comprehensive assessment atoms quality'
                 },
             name='alphacsc_atoms_properties_coords')
 

@@ -393,57 +393,6 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         return selection
 
 
-class CropDataAroundPeaks(TransformerMixin, BaseEstimator):
-    """Crop data around selected ICA peaks to run AlphaCSC
-
-    Parameters
-    ----------
-    time : float, optional
-        half of the window around the detection, by default 0.5
-    """
-    def __init__(self, time=0.5):
-        self.time = time
-
-    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self._check_input(X[0], X[1])
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.RawArray]:
-        return self.crop_raw_around_peaks(X[0], X[1])
-
-    def crop_raw_around_peaks(self, ds: xr.Dataset, raw: mne.io.Raw):
-        all_peaks = ds["ica_peaks_timestamps"].values
-        selected = np.array(ds["ica_peaks_selected"].values,
-                            dtype=bool)
-        timestamps = all_peaks[selected]
-        # Add first sample
-        timestamps += raw.first_samp
-        # Create epochs using timestamps
-        epochs = create_epochs(
-            raw, timestamps, tmin=-self.time, tmax=self.time)
-        # Epochs to raw
-        epochs_data = epochs.copy().get_data()
-        tr, ch, times = epochs_data.shape
-        data = epochs_data.transpose(1, 0, 2).reshape(ch, tr*times)
-        self._check_output(ds, tr)
-        return (ds, mne.io.RawArray(data, epochs.info))
-
-    def _check_input(self, ds, raw):
-        values_to_check = ["ica_peaks_timestamps", "ica_peaks_selected"]
-        for val_name in values_to_check:
-            values = ds[val_name].values
-            assert np.max(values) != np.min(values), (
-                f"{val_name} values are all the same")
-        assert raw.info['sfreq'] == ds[
-            "ica_peaks_timestamps"].attrs['sfreq'], (
-            "sfreq in ICA peaks timepoints is incorrect")
-
-    def _check_output(self, ds, tr):
-        assert sum(ds["ica_peaks_selected"].values) == tr, (
-            "Number of cropped epochs is not equal number of the detected ICA"
-            "peaks.")
-
-
 class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
     def __init__(self, n_atoms: int = 3, atoms_width: float = 0.5,
                  sfreq: float = 200., greedy_cdl_kwarg: Dict = {
@@ -475,36 +424,86 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         self.split_signal_kwarg = split_signal_kwarg
         self.n_times_atom = int(round(self.sfreq * self.atoms_width))
 
-    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
-            y=None):
+    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
+        # Prepare subset of full MEG data for fitting
+        cropped_raw = self._crop_raw_around_peaks(X[0], X[1])
+
+        # fit AlphaCSC
+        data = cropped_raw.get_data(picks='meg')
+        data_split = split_signal(data, **self.split_signal_kwarg)
+        self.cdl = GreedyCDL(
+            n_atoms=self.n_atoms, n_times_atom=self.n_times_atom,
+            n_jobs=self.n_jobs, **self.greedy_cdl_kwarg)
+        self.cdl.fit(data_split)
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
-                                                      mne.io.RawArray]]:
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
+        # Transform the full MEG file
         data = X[1].get_data(picks='meg')
-        data_split = split_signal(data, **self.split_signal_kwarg)
-        cdl = GreedyCDL(n_atoms=self.n_atoms, n_times_atom=self.n_times_atom,
-                        n_jobs=self.n_jobs, **self.greedy_cdl_kwarg)
-        cdl.fit(data_split)
-        z_hat = cdl.transform(data[None, :])[0]
-        _, ch = cdl.u_hat_.shape
-        xr_z_hat = xr.DataArray(
-            z_hat,
-            dims=("atom", "z_hat_time"),
-            coords={
-                "atom": np.arange(self.n_atoms)},
-            name="z_hat")
+        z_hat = self.cdl.transform(data[None, :])[0]
 
-        X[0]["alphacsc_z_hat"] = xr_z_hat
-        X[0]["alphacsc_v_hat"][:, :] = cdl.v_hat_
-        X[0]["alphacsc_u_hat"][:, :ch] = cdl.u_hat_
-
-        del data, data_split, cdl
+        # Save results to dataset
+        check_and_write_to_dataset(X[0], 'alphacsc_z_hat', z_hat)
+        check_and_write_to_dataset(X[0], 'alphacsc_v_hat', self.cdl.v_hat_)
+        check_and_write_to_dataset(X[0], 'alphacsc_u_hat', self.cdl.u_hat_)
+        del data
         logging.info("AlphaCSC decomposition is done.")
         return X
 
+    def _crop_raw_around_peaks(self, ds: xr.Dataset, raw: mne.io.Raw):
+        """Crop data around selected ICA peaks to run AlphaCSC
+
+        Parameters
+        ----------
+        time : float, optional
+            half of the window around the detection, by default 0.5
+        """
+        assert ds.time.attrs['sfreq'] == raw.info['sfreq'], (
+            "Wrong sfreq of the fif file or database time coordinate")
+
+        detections = check_and_read_from_dataset(
+            ds, 'detection_properties',
+            dict(detection_property='selected_for_alphacsc'))
+        detection_mask = detections > 0
+        timestamps = np.where(detection_mask)[0]
+
+        # Add first sample
+        timestamps += raw.first_samp
+        # Create epochs using timestamps
+        epochs = create_epochs(
+            raw, timestamps, tmin=-self.atoms_width, tmax=self.atoms_width)
+        # Epochs to raw
+        epochs_data = epochs.copy().get_data()
+        tr, ch, times = epochs_data.shape
+        assert len(timestamps) == tr, (
+            "Number of cropped epochs is not equal number of the detected ICA"
+            "peaks.")
+        data = epochs_data.transpose(1, 0, 2).reshape(ch, tr*times)
+        return mne.io.RawArray(data, epochs.info)
+
 
 class SelectAlphacscEvents():
+    """Select best events for the atom
+
+    Parameters
+    ----------
+    epoch_width_samples : int, optional
+        epochs width in samples, by default 201.
+    sfreq : int, optional
+        downsample freq, by default 200.
+    z_hat_threshold : int, optional
+        threshold for z-hat values in MAD, by default 3
+    atoms_selection_gof : int, optional
+        GOF value threshold, by default 80
+    atoms_selection_n_events : int, optional
+        n events threshold, by default 10
+    cross_corr_threshold : float, optional
+        cross-correlation on the max channel
+        threshold, by default 0.85
+    window_border : int, optional
+        border of the window to search z-hat peaks,
+        by default 10 samples (50 ms) FIXME: samples to ms
+    """
     def __init__(self,
                  sensors: str = 'grad',
                  n_atoms: int = 3,
@@ -519,27 +518,6 @@ class SelectAlphacscEvents():
                  atoms_selection_n_events: int = 10,
                  cross_corr_threshold: float = 0.85,
                  atoms_selection_min_events: int = 0):
-        """Select best events for the atom
-
-        Parameters
-        ----------
-        epoch_width_samples : int, optional
-            epochs width in samples, by default 201.
-        sfreq : int, optional
-            downsample freq, by default 200.
-        z_hat_threshold : int, optional
-            threshold for z-hat values in MAD, by default 3
-        atoms_selection_gof : int, optional
-            GOF value threshold, by default 80
-        atoms_selection_n_events : int, optional
-            n events threshold, by default 10
-        cross_corr_threshold : float, optional
-            cross-correlation on the max channel
-            threshold, by default 0.85
-        window_border : int, optional
-            border of the window to search z-hat peaks,
-            by default 10 samples (50 ms) FIXME: samples to ms
-        """
         self.sensors = sensors
         self.n_atoms = n_atoms
         self.epoch_width_samples = epoch_width_samples
@@ -554,45 +532,81 @@ class SelectAlphacscEvents():
         self.window_border = window_border
         self.atoms_selection_min_events = atoms_selection_min_events
 
-    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw, mne.io.RawArray]],
-            y=None):
-        self._check_input(X[0])
+    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw,
-                                                      mne.io.RawArray]]:
-        n_channels = len(mne.pick_types(X[1].info, meg=True))
-        self.v_hat = X[0]["alphacsc_v_hat"].values
-        self.u_hat = X[0]["alphacsc_u_hat"][:, :n_channels].values
-        self.z_hat = X[0]["alphacsc_z_hat"].values
-        self.atoms_gof = X[0]["alphacsc_components_gof"].values
-        ica_peaks = X[0]["ica_peaks_timestamps"].values
-        ica_peaks_selected = np.array(
-            X[0]["ica_peaks_selected"].values, dtype=bool)
-        self.n_ica_peaks = sum(ica_peaks_selected)
+    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
+        assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
+            "Wrong sfreq of the fif file or database time coordinate")
 
-        (X[0]["alphacsc_detections_timestamps"][:],
-         X[0]["alphacsc_detections_atom"][:],
-         X[0]["alphacsc_detections_z_values"][:],
-         X[0]["alphacsc_detections_goodness"][:]) = self.select_alphacsc_peaks(
-             X[1], ica_peaks, ica_peaks_selected,
-             X[0]["alphacsc_detections_timestamps"].values,
-             X[0]["alphacsc_detections_atom"].values,
-             X[0]["alphacsc_detections_z_values"].values,
-             X[0]["alphacsc_detections_goodness"].values)
-        self._check_output(X[0])
+        detections = check_and_read_from_dataset(
+            X[1], 'detection_properties',
+            dict(detection_property='selected_for_alphacsc'))
+        detection_mask = detections > 0
+        ica_peaks = np.where(detection_mask)[0]
+
+        v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
+        u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        z_hat = check_and_read_from_dataset(X[0], 'alphacsc_z_hat')
+        gof = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_properties',
+            dict(ica_component_property='gof'))
+
+        # Select alphaCSC peaks
+        (alphacsc_detection, alphacsc_atom, alphacsc_ica_alignment
+         ) = self.select_alphacsc_peaks(z_hat, ica_peaks)
+
+        # Write results to the dataset
+        check_and_write_to_dataset(
+            X[0], 'adetection_properties', alphacsc_detection,
+            dict(ica_component_property='alphacsc_detection'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', alphacsc_atom,
+            dict(ica_component_property='alphacsc_atom'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', alphacsc_ica_alignment,
+            dict(ica_component_property='alphacsc_ica_alignment'))
+
+        # Evaluate atoms' goodness
+        goodness = self.evaluate_atoms_goodness(
+            X[1], u_hat, v_hat, alphacsc_detection, alphacsc_atom, gof)
+
+        # Write results to the dataset
+        check_and_write_to_dataset(
+            X[0], 'alphacsc_atoms_properties', goodness,
+            dict(ica_component_property='goodness'))
+
         logging.info("AlphaCSC events are selected.")
         return X
 
-    def select_alphacsc_peaks(self,
-                              mag_data,
-                              ica_peaks,
-                              ica_peaks_selected,
-                              final_time, final_atoms,
-                              final_z_hat,
-                              final_goodness):
+    def select_alphacsc_peaks(self, z_hat: np.ndarray, ica_peaks: np.ndarray
+                              ) -> Tuple[np.ndarray]:
+        """Select z-hat peaks before the ICA detections.
+
+        Parameters
+        ----------
+        z_hat : np.ndarray
+            z-hat timeseries. Shape: atoms by times (length of the MEG data)
+        ica_peaks : np.ndarray
+            1D binary array of the ICA peaks (length of the MEG data)
+
+        Returns
+        -------
+        alphacsc_detection
+            1D binary array of the alphaCSC detection (length of the MEG data)
+        alphacsc_atom
+            array of the alphaCSC atoms (length of the MEG data)
+        ica_alphacsc_aligned
+            array with ica peak index for each AlphaCSC detection
+            (same length as MEG recording)
+        """
+        alphacsc_detection = np.zeros_like(ica_peaks)
+        alphacsc_atom = np.zeros_like(ica_peaks)
+        alphacsc_ica_alignment = np.zeros_like(ica_peaks)
+
         # Repeat for each atom
         for atom in range(self.n_atoms):
+
             n_events = 0
             z_hat_threshold = self.z_hat_threshold
 
@@ -600,10 +614,10 @@ class SelectAlphacscEvents():
             # selected
             while n_events < self.min_n_events:
                 # select atom's best events according to z-hat
-                (alignment, z_values, max_ch, selected_events, events) =\
-                    self.find_max_z(atom, self.z_hat_threshold)
+                detections, alignments = self._find_max_z(
+                    z_hat, ica_peaks, z_hat_threshold)
 
-                n_events = np.sum(selected_events)
+                n_events = np.sum(detections)
 
                 # continue with lower z_hat_threshold if not enough events
                 if n_events < self.min_n_events:
@@ -614,29 +628,23 @@ class SelectAlphacscEvents():
                     break
 
             if n_events > self.atoms_selection_min_events:
-                # make epochs only with best events for this atom
-                epochs = create_epochs(
-                   mag_data, events[selected_events], tmin=-0.25, tmax=0.25)
+                detection_mask = detections > 0
+                alphacsc_detection[detection_mask] = 1
+                alphacsc_atom[detection_mask] = atom
+                alphacsc_ica_alignment[detection_mask] = alignments[
+                    detection_mask]
+        return alphacsc_detection, alphacsc_atom, alphacsc_ica_alignment
 
-                # Estimate goodness of the atom
-                goodness = self.atom_goodness(
-                   atom, selected_events, epochs, max_ch)
-
-                # Align ICA peaks using z-hat
-                mask = np.where(ica_peaks_selected)[0][selected_events]
-                final_time[mask] = ica_peaks[mask] + alignment[selected_events]
-                final_atoms[mask] = [atom]*len(mask)
-                final_z_hat[mask] = z_values[selected_events]
-                final_goodness[mask] = [goodness]*len(mask)
-        return final_time, final_atoms, final_z_hat, final_goodness
-
-    def find_max_z(self, atom: int, z_threshold: float):
-        """find events with large z-peak before ICA peak
+    def _find_max_z(self, z_hat: np.ndarray, ica_peaks: np.ndarray,
+                    z_threshold: float) -> Tuple[np.ndarray]:
+        """Find events with large z-peak before ICA peak.
 
         One ICA peak:
         -0.5s---window_border---z_max---window_border---ICA peak--...--0.5s
+
         The same sketch in samples:
         0-10-----z_max-----90-100-----------------------201
+
         The same sketch in milliseconds:
         0-50-----z_max----450-500----------------------1001
 
@@ -644,84 +652,110 @@ class SelectAlphacscEvents():
 
         Parameters
         ----------
-        atom : int
-            AlphaCSC atom index
-        z_threshold : float, optional
+        z_hat : np.ndarray
+            z-hat timeseries with the same length as MEG recording
+        ica_peaks : np.ndarray
+            binary array with the same length as MEG recording
+        z_threshold : float
             threshold for z-hat values in MAD, by default 3
+
         Returns
         -------
-        array_like, int [alignment]
-            time to add to the ICA peaks (alignment to z_max);
-        array_like, float [z_values]
-            z_hat values in MAD;
-        int [np.argmax(u_k)]
-            max channel from u_hat
-        array_like, bool [selected_events]
-            events selected in the ICA peaks array
-        array_like, np.int32 [events]
-            timepoints of the selected events in the raw_cropped
+        alphacsc_detection
+            binary array with the same length as MEG recording
+        ica_alphacsc_aligned
+            array with ica peak index for each AlphaCSC detection
+            (same length as MEG recording)
         """
 
-        window_border = int(self.window_border)
+        border = int(self.window_border)
         half_event = self.epoch_width_samples // 2
-        event_width = self.epoch_width_samples
-
-        # timepoints of events in the raw cropped around ICA peaks
-        events = [half_event + i*event_width for i in range(self.n_ica_peaks)]
-        events = np.array(events)
-
-        # load atoms properties
-        z_k = self.z_hat[atom]
-        u_k = self.u_hat[atom]
-        v_k = self.v_hat[atom]
-
-        # Reshape z_hat to (n_evets, event_width)
-        z_events = np.array(
-            [z_k[int(ev-half_event):int(ev+half_event)] for ev in events])
-
-        alignment = np.zeros(self.n_ica_peaks)
-        z_values = np.zeros(self.n_ica_peaks)
-        selected = np.zeros(self.n_ica_peaks, dtype=bool)
+        half_atom_width = self.atom_width_samples // 2
+        # event_width = self.epoch_width_samples
 
         # estimate z-hat threshold
-        z_mad = stats.median_abs_deviation(z_k[z_k > 0])
-        threshold = np.median(z_k[z_k > 0]) + z_mad*z_threshold
+        z_mad = stats.median_abs_deviation(z_hat[z_hat > 0])
+        threshold = np.median(z_hat[z_hat > 0]) + z_mad*z_threshold
 
-        for n, event in enumerate(z_events):
+        # outputs
+        alphacsc_detection = np.zeros_like(ica_peaks)
+        ica_alphacsc_aligned = np.zeros_like(ica_peaks)
+
+        for ipk in ica_peaks:
             # z_peak: max z-hat in the window
-            z_in_window = event[window_border:half_event-window_border]
-            z_peak = np.argmax(z_in_window)
-            # value of the max z-hat
+            # NOTE: window is before the ICA peak
+            left_win = ipk - half_event + border
+            right_win = ipk - border
+            window = z_hat[left_win:right_win]
+            zpk = np.argmax(window)
 
-            z_max_value = event[z_peak + window_border]
-
-            if z_max_value > threshold:
+            if window[zpk] > threshold:
                 # alignment of the ICA detections to the z-hat max peak
                 # alignment to the center of the atom
-                # max z-hat is at the beginning of v_hat but spike is later
-                z_values[n] = z_max_value
-                z_peak += window_border + len(v_k)//2
-                alignment[n] = z_peak - half_event
-                selected[n] = True
+                # max z-hat is at the beginning of v_hat but the spike is later
+                spike_ind = left_win + zpk + half_atom_width
+                alphacsc_detection[spike_ind] = 1
+                ica_alphacsc_aligned[spike_ind] = ipk
+        return alphacsc_detection, ica_alphacsc_aligned
 
-        # align events to the z-hat peak
-        events += np.int32(alignment)
-        return alignment, z_values, np.argmax(u_k), selected, events
-
-    def atom_goodness(self, atom: int, selected_events: np.ndarray,
-                      epochs: mne.Epochs, max_ch: int):
-        """Evaluate atom quality
+    def evaluate_atoms_goodness(self, mag_data: mne.io.Raw, u_hat: np.ndarray,
+                                v_hat: np.ndarray, detections: np.ndarray,
+                                atoms: np.ndarray, gof: np.ndarray,
+                                ) -> np.ndarray:
+        """Estimate atom goodness value for each AlphaCSC atom.
 
         Parameters
         ----------
-        atom : int
-            AlphaCSC atom index
-        selected_events : array_like, bool
-            bool array of the selected ICA peaks for this atom
+        mag_data : mne.io.Raw
+            Full MEG recording
+        u_hat : np.ndarray
+            shape: atoms by channels
+        v_hat : np.ndarray
+            shape: atoms by times
+        detections : np.ndarray
+            AlphaCSC detection, binary file with the length of MEG recording
+        atoms : np.ndarray
+            atom that corresponds to the AlphaCSC detection
+        gof : np.ndarray
+            1D array with values between 0 and 1 for each atom
+
+        Returns
+        -------
+        np.ndarray
+            goodness value for each atom
+        """
+        goodness = np.zeros(self.n_atoms)
+        detection_mask = detections > 0
+        unique_atoms = np.unique(atoms[detection_mask])
+        for atom in range(self.n_atoms):
+            if atom in unique_atoms:
+                atom_mask = detection_mask & (atoms == atom)
+                timestamps = np.where(atom_mask)[0]
+                # make epochs only with best events for this atom
+                epochs = create_epochs(
+                   mag_data, timestamps, tmin=-0.25, tmax=0.25)
+
+                # Estimate goodness of the atom
+                goodness[atom] = self._atom_goodness(
+                   epochs, gof[atom], len(timestamps), v_hat[atom],
+                   u_hat[atom])
+
+    def _atom_goodness(self, epochs: mne.Epochs, gof: float, n_detections: int,
+                       v_hat: np.ndarray, u_hat: np.ndarray) -> float:
+        """Evaluate atom quality.
+
+        Parameters
+        ----------
         epochs : mne.Epochs
-            epochs of the selected events
-        max_ch : int
-            max channel from the u_hat
+            [description]
+        gof : float
+            Goodness of dipole fitting of u_hat
+        n_detections : int
+            Number of detected events for this atom
+        v_hat : np.ndarray
+            1D array, temporal shape of the atom.
+        u_hat : np.ndarray
+            1D array, spatial distribution of the atom
 
         Returns
         -------
@@ -729,34 +763,33 @@ class SelectAlphacscEvents():
             goodness value between 0 and 1
         """
         # First condition: absolute number of the events
-        n_events = np.sum(selected_events)
-        cond1 = self.atoms_selection_n_events - n_events
+        cond1 = self.atoms_selection_n_events - n_detections
         if cond1 < 0:
             cond1 = 1
         else:
-            cond1 = n_events / self.atoms_selection_n_events
+            cond1 = n_detections / self.atoms_selection_n_events
 
         # Second condition: atoms localization GOF
-        atoms_gof = self.atoms_gof[atom]
         if isinstance(self.sensors, str):
             # Allow lower GOF for grad
             if self.sensors == 'grad':
-                atoms_gof -= self.allow_lower_gof_grad
-        cond2 = self.atoms_selection_gof - atoms_gof
+                gof -= self.allow_lower_gof_grad
+        cond2 = self.atoms_selection_gof - gof
         if cond2 < 0:
             cond2 = 1
         else:
-            cond2 = self.atoms_gof[atom] / self.atoms_selection_gof
+            cond2 = gof / self.atoms_selection_gof
 
         # Third condition: v_hat and max channel pattern similarity
         # cross-correlation epochs' max channel with atom's
         # shape inside core events
+        max_ch = np.argmax(u_hat)
         max_ch_waveforms = epochs.get_data()[:, max_ch, :]
         cross_corr = np.zeros(max_ch_waveforms.shape[0])
         for i, spike in enumerate(max_ch_waveforms):
             a = spike/np.linalg.norm(spike)
             a = np.abs(a)
-            v = self.v_hat[atom]/np.linalg.norm(self.v_hat[atom])
+            v = v_hat/np.linalg.norm(v_hat)
             v = np.abs(v)
             cross_corr[i] = np.correlate(a, v).mean()
 
@@ -767,24 +800,6 @@ class SelectAlphacscEvents():
         else:
             cond3 = mean_cc / self.cross_corr_threshold
         return (cond1 + cond2 + cond3) / 3
-
-    def _check_input(self, ds):
-        values_to_check = [
-            "alphacsc_v_hat", "alphacsc_z_hat", "alphacsc_components_gof",
-            "ica_peaks_timestamps", "ica_peaks_selected", "alphacsc_u_hat"]
-        for val_name in values_to_check:
-            values = ds[val_name].values
-            assert np.max(values) != np.min(values), (
-                f"{val_name} values are all the same")
-
-    def _check_output(self, ds):
-        values_to_check = [
-            "alphacsc_detections_timestamps", "alphacsc_detections_atom",
-            "alphacsc_detections_z_values", "alphacsc_detections_goodness"]
-        for val_name in values_to_check:
-            values = ds[val_name].values
-            assert np.max(values) != np.min(values), (
-                f"{val_name} values are all the same")
 
 
 class ClustersMerging():
