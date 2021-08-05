@@ -6,7 +6,8 @@ import pytest
 from megspikes.database.database import Database, select_sensors
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
-                                           PeakDetection)
+                                           PeakDetection,
+                                           CleanDetections)
 from megspikes.utils import PrepareData
 from megspikes.simulation.simulation import simulate_raw_fast
 
@@ -139,3 +140,19 @@ def test_peaks_detection_details(spikes, prominence, width):
         assert min(np.abs(detected_peaks - i)) < 20
     # with raises(ValueError, match="1-D array"):
     #     find_peaks(np.array(1))
+
+
+@pytest.mark.parametrize(
+    'times,subcorr,selection,n_cleaned_peaks,diff_threshold',
+    [([400, 500, 700, 900, 1200], [0.1, 0.9, 0.9, 0.9, 0.1],
+      [0, 1, 1, 1, 0], 3, 0.5),
+     ([400, 500, 700, 900, 1200], [0.1, 0.9, 0.9, 0.9, 0.2],
+      [0, 1, 1, 1, 1], 4, 0.5),
+     ([400, 500], [0.1, 0.9],
+      [0, 1], 10, 4)])
+def test_detection_cleaning_details(times, subcorr, selection,
+                                    n_cleaned_peaks, diff_threshold):
+    clean = CleanDetections(diff_threshold=diff_threshold,
+                            n_cleaned_peaks=n_cleaned_peaks)
+    result = clean.clean_detections(np.array(times), np.array(subcorr), 200.)
+    assert (result == selection).all()

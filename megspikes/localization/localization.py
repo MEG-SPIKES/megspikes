@@ -192,25 +192,40 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         self.window = window
         self.sfreq = sfreq
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        logging.info("ICA peaks are localized.")
-        return X
-
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        timestamps = X[0]["ica_peaks_timestamps"]
-        timestamps = timestamps[timestamps != 0]
-        n_peaks = len(timestamps)
-        spikes = np.sort(timestamps)
-        # NOTE: save sorted timestamps
-        X[0]["ica_peaks_timestamps"][:n_peaks] = spikes
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        detection = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='detection'))
+        # samples
+        timestamps = np.where(detection > 0)[0]
 
         data = X[1].get_data()
         window = (np.array(self.window)/1000)*self.sfreq
         mni_coords, subcorr = self.fast_music(
-            data, self.info, spikes, window=window)
-        X[0]["ica_peaks_localization"][:n_peaks, :] = mni_coords
-        X[0]["ica_peaks_subcorr"][:n_peaks] = subcorr
-        return self
+            data, self.info, timestamps, window=window)
+
+        full_subcorrs = np.zeros_like(detection)
+        full_subcorrs[detection > 0] = subcorr
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_subcorrs,
+            dict(detection_property='subcorr'))
+
+        full_coords = np.zeros((detection.shape[0], 3))
+        full_coords[detection > 0, :] = mni_coords
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 0],
+            dict(detection_property='mni_x'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 1],
+            dict(detection_property='mni_y'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 2],
+            dict(detection_property='mni_z'))
+        logging.info("ICA peaks are localized.")
+        return X
 
     def fast_music(self, data: np.ndarray, info: mne.Info, spikes: np.ndarray,
                    window: List[int]):
@@ -221,7 +236,7 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         """
         common_atr = self._prepare_rap_music_input(info, self.cov, self.fwd)
         zyx_mni = np.zeros((len(spikes), 3))
-        subcorrs = np.zeros_like(spikes)
+        subcorrs = np.zeros(len(spikes), dtype=np.float64)
 
         for n, spike in enumerate(spikes):
             spike_data = data[:, int(spike+window[0]): int(spike+window[1])]

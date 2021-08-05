@@ -256,8 +256,8 @@ class PeakDetection(TransformerMixin, BaseEstimator):
             dict(detection_property='detection'))
         check_and_write_to_dataset(
             X[0], 'detection_properties',
-            detections,
-            dict(detection_property='detection'))
+            ica_index,
+            dict(detection_property='ica_component'))
 
         X[0]['detection_properties'].attrs["ica_components_filtering"] = (
             self.h_filter, self.l_filter)
@@ -348,65 +348,49 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         self.n_cleaned_peaks = n_cleaned_peaks
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self._check_input(X[0])
-        # mni_coord = X[0]["ica_peaks_localization"].values
-        subcorr = X[0]["ica_peaks_subcorr"].values
-        timestamps = X[0]["ica_peaks_timestamps"].values  # samples
-        sfreq = X[0]["ica_peaks_timestamps"].attrs['sfreq']
-
-        selected_peaks = self.clean_detections(timestamps, subcorr, sfreq)
-        X[0]["ica_peaks_selected"][:] = np.int32(selected_peaks)
-        self._check_output(X[0])
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        detection = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='detection'))
+        detection_mask = detection > 0
+        # samples
+        timestamps = np.where(detection_mask)[0]
+
+        subcorr = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='subcorr'))
+        subcorrs = subcorr[detection_mask]
+
+        sfreq = X[0].time.attrs['sfreq']
+        selected_peaks = self.clean_detections(timestamps, subcorrs, sfreq)
+        selection = np.zeros_like(detection)
+        selection[np.where(detection_mask)[0][selected_peaks == 1]] = 1
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', selection,
+            dict(detection_property='selected_for_alphacsc'))
         logging.info("ICA peaks cleaning is done.")
         return X
 
     def clean_detections(self, timestamps: np.ndarray, subcorr: np.ndarray,
                          sfreq: float = 200.) -> np.ndarray:
-        # all information about spikes in one array
-        spikes = np.array([timestamps, subcorr]).T
-
-        # sort spikes by time
-        sorted_spikes_ind = np.argsort(spikes[:, 0])
-        spikes = spikes[sorted_spikes_ind, :]
-        cleaned_spikes = []
-
+        selection = np.zeros_like(timestamps)
         window = int(self.diff_threshold*sfreq)
-        for time in range(0, int(spikes[:, 0].max()), window):
-            # spikes in the diff window
-            mask = (spikes[:, 0] > time) & (
-                spikes[:, 0] <= (time + window))
-            spikes_in_range = spikes[mask, :]
-            if len(spikes_in_range) > 0:
+        for time in range(0, int(timestamps.max()), window):
+            # timestamp in the diff window
+            mask = (timestamps > time) & (timestamps <= (time + window))
+            if len(timestamps[mask]) > 0:
                 # select max subcorr
-                s_max_idx = np.argmax(spikes_in_range[:, 1])
-                # append spike with max subcorr value
-                cleaned_spikes.append(spikes_in_range[s_max_idx, :])
-
-        cleaned_spikes = np.array(cleaned_spikes)
+                subcorr_max_idx = np.argmax(subcorr[mask])
+                # add timepoint with max subcorr value to selection
+                selection[np.where(mask)[0][subcorr_max_idx]] = 1
 
         # Select n_spikes with max subcorr
-        sort_ind = np.argsort(
-            cleaned_spikes[:, 1])[::-1][:self.n_cleaned_peaks]
-        cleaned_spikes = cleaned_spikes[sort_ind, :]
-
-        sorted_spikes_ind = np.argsort(cleaned_spikes[:, 0])
-        cleaned_spikes = cleaned_spikes[sorted_spikes_ind, :]
-        return np.isin(timestamps, cleaned_spikes[:, 0])
-
-    def _check_input(self, ds):
-        subcorr = ds["ica_peaks_subcorr"].values
-        assert np.max(subcorr) != np.min(subcorr), (
-            "subcorr values are all the same")
-        timestamps = ds["ica_peaks_timestamps"].values
-        assert np.max(timestamps) != np.min(timestamps), (
-            "timestamps values are all the same")
-
-    def _check_output(self, ds):
-        selected = ds["ica_peaks_selected"].values
-        assert sum(selected) > 0, ("No ICA peaks after cleaning")
+        not_selected = np.argsort(
+            subcorr[selection == 1])[::-1][self.n_cleaned_peaks:]
+        selection[not_selected] = 0
+        return selection
 
 
 class CropDataAroundPeaks(TransformerMixin, BaseEstimator):
