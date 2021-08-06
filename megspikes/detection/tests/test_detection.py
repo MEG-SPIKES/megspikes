@@ -11,15 +11,6 @@ from megspikes.detection.detection import (DecompositionICA,
                                            DecompositionAlphaCSC,
                                            SelectAlphacscEvents)
 from megspikes.utils import PrepareData
-from megspikes.simulation.simulation import simulate_raw_fast
-
-
-@pytest.fixture(name='fname')
-def sample_path():
-    sample_path = Path(op.dirname(__file__)).parent.parent.parent
-    sample_path = sample_path / 'tests_data' / 'test_detection'
-    sample_path.mkdir(exist_ok=True, parents=True)
-    return sample_path
 
 
 @pytest.fixture(scope="module", name="test_sample_path")
@@ -39,42 +30,24 @@ def spikes_waveforms():
 @pytest.fixture(scope="module", name="db")
 def make_database():
     n_ica_comp = 4
-    db = Database(times=np.linspace(0, 10, 10_000),
+    db = Database(times=np.linspace(0, 10, 2_000),
                   n_ica_components=n_ica_comp)
     return db
 
 
-@pytest.fixture(name="ds")
-def make_dataset(db, fname, dataset):
-    ds = dataset.copy(deep=True)
-    n_ica_comp = 4
-    raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
-    raw_fif.save(fname=fname / 'raw_test.fif', overwrite=True)
-    for sens in db.sensors:
-        ds["ica_sources"].loc[
-            dict(sensors=sens)
-            ] = np.array([cardio_ts]*n_ica_comp)*5
-        ds["ica_component_properties"].loc[
-            dict(sensors=sens, ica_component_property="gof")
-            ] = np.array([72., 85., 94., 99.])
-        ds["ica_component_properties"].loc[
-            dict(sensors=sens, ica_component_property="kurtosis")
-            ] = np.array([2, 0.5, 8, 0])
-    return ds
-
-
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_ica_decomposition(db, ds, fname, sensors):
+def test_ica_decomposition(db, dataset, simulation, sensors):
     pipeline = "aspire_alphacsc_run_1"
     n_ica_comp = 4
-    _, sel = select_sensors(ds, 'grad', pipeline)
-    ds.loc[sel].ica_components.values *= 0
-    _, sel = select_sensors(ds, 'mag', pipeline)
-    ds.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(dataset, 'grad', pipeline)
+    dataset.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(dataset, 'mag', pipeline)
+    dataset.loc[sel].ica_components.values *= 0
 
-    pd = PrepareData(data_file=fname / 'raw_test.fif', sensors=sensors)
-    ds_channles = db.select_sensors(ds, sensors, pipeline)
+    pd = PrepareData(data_file=simulation.case_manager.fif_file,
+                     sensors=sensors, resample=dataset.time.attrs['sfreq'])
+    ds_channles = db.select_sensors(dataset, sensors, pipeline)
     ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
 
     decomposition = DecompositionICA(n_components=n_ica_comp)
@@ -87,18 +60,23 @@ def test_ica_decomposition(db, ds, fname, sensors):
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_components_selection(ds, sensors):
-    pipeline = "aspire_alphacsc_run_1"
+@pytest.mark.parametrize(
+    "gof,kurtosis,sel_comp,run",
+    [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0),
+     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 0, 0], 1)])  # FIXME:
+def test_components_selection(ds, sensors, gof, kurtosis, sel_comp, run):
+    ds["ica_component_properties"].loc[
+        dict(sensors=sensors, ica_component_property="gof")
+        ] = np.array(gof)
+    ds["ica_component_properties"].loc[
+        dict(sensors=sensors, ica_component_property="kurtosis")
+        ] = np.array(kurtosis)
+    pipeline = f"aspire_alphacsc_run_{run+1}"
     ds_channles, _ = select_sensors(ds, sensors, pipeline)
     ds_channles['ica_component_selection'] *= 0
-    selection = ComponentsSelection()
+    selection = ComponentsSelection(run=run)
     (results, _) = selection.fit_transform((ds_channles, None))
-    assert sum(results['ica_component_selection'].values) == 2
-
-    pipeline = "aspire_alphacsc_run_2"
-    ds_channles, _ = select_sensors(ds, sensors, pipeline)
-    selection = ComponentsSelection(run=1)
-    (results, _) = selection.fit_transform((ds_channles, None))
+    assert sum(results['ica_component_selection'].values) == sum(sel_comp)
 
 
 @pytest.mark.parametrize("run,n_runs", [
@@ -192,16 +170,17 @@ def test_alphacsc_decomposition(simulation, sensors):
     assert True
 
 
+@pytest.mark.happy
+def test_alphacsc_events_selection():
+    pass
+
+
 @pytest.mark.parametrize(
     "z_hat,ica_peaks,n_detections",
     [([0]*100 + [1] + [0]*99, [0]*199 + [1], 0),
-     ([0]*120 + [1] + [0]*79, [0]*199 + [1], 0)])
+     ([0]*120 + [1] + [0]*79, [0]*199 + [1], 1)])
 def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
     alpha_select = SelectAlphacscEvents()
     detection, _ = alpha_select._find_max_z(
         np.array(z_hat), np.array(ica_peaks), 1)
     assert sum(detection) == n_detections
-
-
-def test_alphacsc_atom_goodness_details():
-    pass

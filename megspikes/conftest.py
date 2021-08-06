@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from megspikes.simulation.simulation import Simulation
+from megspikes.simulation.simulation import Simulation, simulate_raw_fast
 
 
 @pytest.fixture(scope="module", name="dataset")
@@ -11,7 +11,9 @@ def make_full_dataset(db):
         selection_ch = ds.attrs[sens]
         selection_sens = dict(sensors=sens)
         shape = ds["ica_sources"].loc[selection_sens].shape
-        ds["ica_sources"].loc[selection_sens] = np.random.sample(shape)
+        _, cardio_ts = simulate_raw_fast(10, ds.time.attrs["sfreq"])
+        ds["ica_sources"].loc[selection_sens] = np.array([
+            cardio_ts]*db.n_ica_components)*5
 
         shape = ds["ica_components"].loc[:, selection_ch].shape
         ds["ica_components"].loc[:, selection_ch] = np.random.sample(shape)
@@ -56,5 +58,5 @@ def run_simulation(test_sample_path):
 
     sim = Simulation(test_sample_path)
     sim.load_mne_dataset()
-    sim.simulate_dataset(length=5)
+    sim.simulate_dataset(length=10)
     return sim

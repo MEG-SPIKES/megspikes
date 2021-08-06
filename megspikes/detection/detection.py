@@ -699,7 +699,7 @@ class SelectAlphacscEvents():
             window = z_hat[left_win:right_win]
             zpk = np.argmax(window)
 
-            if window[zpk] > threshold:
+            if window[zpk] >= threshold:
                 # alignment of the ICA detections to the z-hat max peak
                 # alignment to the center of the atom
                 # max z-hat is at the beginning of v_hat but the spike is later
