@@ -487,7 +487,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         return mne.io.RawArray(data, epochs.info)
 
 
-class SelectAlphacscEvents():
+class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
     """Select best events for the atom.
 
     Parameters
@@ -550,32 +550,30 @@ class SelectAlphacscEvents():
             "Wrong sfreq of the fif file or database time coordinate")
 
         detections = check_and_read_from_dataset(
-            X[1], 'detection_properties',
+            X[0], 'detection_properties',
             dict(detection_property='selected_for_alphacsc'))
-        detection_mask = detections > 0
-        ica_peaks = np.where(detection_mask)[0]
 
         v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
         u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
         z_hat = check_and_read_from_dataset(X[0], 'alphacsc_z_hat')
         gof = check_and_read_from_dataset(
             X[0], 'alphacsc_atoms_properties',
-            dict(ica_component_property='gof'))
+            dict(alphacsc_atom_property='gof'))
 
         # Select alphaCSC peaks
         (alphacsc_detection, alphacsc_atom, alphacsc_ica_alignment
-         ) = self.select_alphacsc_peaks(z_hat, ica_peaks)
+         ) = self.select_alphacsc_peaks(z_hat, detections)
 
         # Write results to the dataset
         check_and_write_to_dataset(
-            X[0], 'adetection_properties', alphacsc_detection,
-            dict(ica_component_property='alphacsc_detection'))
+            X[0], 'detection_properties', alphacsc_detection,
+            dict(detection_property='alphacsc_detection'))
         check_and_write_to_dataset(
             X[0], 'detection_properties', alphacsc_atom,
-            dict(ica_component_property='alphacsc_atom'))
+            dict(detection_property='alphacsc_atom'))
         check_and_write_to_dataset(
             X[0], 'detection_properties', alphacsc_ica_alignment,
-            dict(ica_component_property='alphacsc_ica_alignment'))
+            dict(detection_property='ica_alphacsc_aligned'))
 
         # Evaluate atoms' goodness
         goodness = self.evaluate_atoms_goodness(
@@ -584,7 +582,7 @@ class SelectAlphacscEvents():
         # Write results to the dataset
         check_and_write_to_dataset(
             X[0], 'alphacsc_atoms_properties', goodness,
-            dict(ica_component_property='goodness'))
+            dict(alphacsc_atom_property='goodness'))
 
         logging.info("AlphaCSC events are selected.")
         return X
@@ -625,7 +623,7 @@ class SelectAlphacscEvents():
             while n_events < self.min_n_events:
                 # select atom's best events according to z-hat
                 detections, alignments = self._find_max_z(
-                    z_hat, ica_peaks, z_hat_threshold)
+                    z_hat[atom], ica_peaks, z_hat_threshold)
 
                 n_events = np.sum(detections)
 
@@ -749,6 +747,7 @@ class SelectAlphacscEvents():
                 goodness[atom] = self._atom_goodness(
                    epochs, gof[atom], len(timestamps), v_hat[atom],
                    u_hat[atom])
+        return goodness
 
     def _atom_goodness(self, epochs: mne.Epochs, gof: float, n_detections: int,
                        v_hat: np.ndarray, u_hat: np.ndarray) -> float:
@@ -812,7 +811,7 @@ class SelectAlphacscEvents():
         return (cond1 + cond2 + cond3) / 3
 
 
-class ClustersMerging():
+class ClustersMerging(TransformerMixin, BaseEstimator):
     """ Merge atoms from all runs into one atom's library:
         - Estimate atom's goodness threshold. Goodness represents
             cross-correlation of events inside the atom, number of

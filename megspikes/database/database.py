@@ -23,7 +23,6 @@ class Database():
                  atom_length: float = 0.5,  # seconds
                  ):
         self.times = times  # seconds
-        self.meg_data_length = len(self.times)  # seconds
         self.n_fwd_sources = n_fwd_sources
         self.channels_by_sensors = channels_by_sensors
         self.sensors = sensors
@@ -83,8 +82,8 @@ class Database():
                 'alphacsc_detection': 'Final AlphaCSC detections',
                 'alphacsc_atom': ('AlphaCSC atom that corresponds to the '
                                   'AlphaCSC detection'),
-                'alphacsc_ica_alignment': ('Alignment of the ICA components '
-                                           'that was done using AlphaCSC')
+                'ica_alphacsc_aligned': ('Alignment of the ICA components '
+                                         'that was done using AlphaCSC')
                 },
             name='detection_properties')
 
@@ -249,10 +248,12 @@ class Database():
 
         alphacsc_atoms_properties = xr.DataArray(
             data=np.zeros(
-                (len(sensors), n_alphacsc_atoms,
+                (len(pipelines), len(sensors), n_alphacsc_atoms,
                  len(alphacsc_atoms_properties_coords))),
-            dims=("sensors", "alphacsc_atom", "alphacsc_atom_property"),
+            dims=("pipeline", "sensors", "alphacsc_atom",
+                  "alphacsc_atom_property"),
             coords={
+                "pipeline": pipelines,
                 "sensors": sensors,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "alphacsc_atom_property": alphacsc_atoms_properties_coords,
