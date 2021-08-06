@@ -488,12 +488,14 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
 
 
 class SelectAlphacscEvents():
-    """Select best events for the atom
+    """Select best events for the atom.
 
     Parameters
     ----------
     epoch_width_samples : int, optional
-        epochs width in samples, by default 201.
+        epochs of events in cropped data width in samples, by default 201.
+    atom_width : float, optional
+        atom width in seconds, by default 0.5
     sfreq : int, optional
         downsample freq, by default 200.
     z_hat_threshold : int, optional
@@ -513,6 +515,7 @@ class SelectAlphacscEvents():
                  sensors: str = 'grad',
                  n_atoms: int = 3,
                  epoch_width_samples: int = 201,
+                 atom_width: float = 0.5,
                  sfreq: float = 200.,
                  z_hat_threshold: float = 3.,  # MAD
                  z_hat_threshold_min: float = 1.5,  # MAD
@@ -526,6 +529,7 @@ class SelectAlphacscEvents():
         self.sensors = sensors
         self.n_atoms = n_atoms
         self.epoch_width_samples = epoch_width_samples
+        self.atom_width = atom_width
         self.sfreq = sfreq
         self.z_hat_threshold = z_hat_threshold
         self.z_hat_threshold_min = z_hat_threshold_min
@@ -536,6 +540,7 @@ class SelectAlphacscEvents():
         self.cross_corr_threshold = cross_corr_threshold
         self.window_border = window_border
         self.atoms_selection_min_events = atoms_selection_min_events
+        self.atom_width_samples = int(atom_width * sfreq)
 
     def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
         return self
@@ -686,7 +691,7 @@ class SelectAlphacscEvents():
         alphacsc_detection = np.zeros_like(ica_peaks)
         ica_alphacsc_aligned = np.zeros_like(ica_peaks)
 
-        for ipk in ica_peaks:
+        for ipk in np.where(ica_peaks > 0)[0]:
             # z_peak: max z-hat in the window
             # NOTE: window is before the ICA peak
             left_win = ipk - half_event + border

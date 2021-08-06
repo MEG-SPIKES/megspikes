@@ -192,9 +192,16 @@ def test_alphacsc_decomposition(simulation, sensors):
     assert True
 
 
-def test_alphacsc_events_selection():
-    pass
+@pytest.mark.parametrize(
+    "z_hat,ica_peaks,n_detections",
+    [([0]*100 + [1] + [0]*99, [0]*199 + [1], 0),
+     ([0]*120 + [1] + [0]*79, [0]*199 + [1], 0)])
+def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
+    alpha_select = SelectAlphacscEvents()
+    detection, _ = alpha_select._find_max_z(
+        np.array(z_hat), np.array(ica_peaks), 1)
+    assert sum(detection) == n_detections
 
 
-def test_alphacsc_atom_goodness():
+def test_alphacsc_atom_goodness_details():
     pass
