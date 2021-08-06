@@ -22,8 +22,9 @@ mne.set_log_level("ERROR")
 
 
 class Localization():
-    def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True):
-        if not isinstance(case.fwd['oct5'], mne.Forward):
+    def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True,
+                  spacing: str = 'oct5'):
+        if not isinstance(case.fwd[spacing], mne.Forward):
             raise RuntimeError("CaseManager don't include forward model")
         self.sensors = sensors
         self.case = case
@@ -33,12 +34,12 @@ class Localization():
             case.info, mne.pick_types(case.info, meg=self.sensors))
         self.n_channels = len(mne.pick_types(self.info, meg=True))
 
-        self.fwd = case.fwd['oct5']
+        self.fwd = case.fwd[spacing]
         if isinstance(self.sensors, str):
             self.fwd = mne.pick_types_forward(self.fwd, meg=self.sensors)
 
-        self.bem = case.bem['oct5']
-        self.trans = case.trans['oct5']
+        self.bem = case.bem[spacing]
+        self.trans = case.trans[spacing]
         self.freesurfer_dir = case.freesurfer_dir
         self.cov = mne.make_ad_hoc_cov(self.info)
 
@@ -142,8 +143,10 @@ class Localization():
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
     """ Localize ICA components using mne.fit_dipole()."""
-    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
-        self.setup_fwd(case, sensors)
+    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
@@ -187,8 +190,10 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         MUSIC window, by default [-20, 30]
     """
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
-                 sfreq: int = 200, window: List[int] = [-20, 30]):
-        self.setup_fwd(case, sensors)
+                 sfreq: int = 200, window: List[int] = [-20, 30],
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
         self.window = window
         self.sfreq = sfreq
 

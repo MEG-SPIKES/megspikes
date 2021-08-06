@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from megspikes.database.database import Database, select_sensors
+from megspikes.database.database import select_sensors
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
                                            PeakDetection,
