@@ -221,13 +221,13 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         full_coords = np.zeros((detection.shape[0], 3))
         full_coords[detection > 0, :] = mni_coords
         check_and_write_to_dataset(
-            X[0], 'detection_properties', full_coords[:, 0],
+            X[0], 'detection_properties', full_coords[:, 2],
             dict(detection_property='mni_x'))
         check_and_write_to_dataset(
             X[0], 'detection_properties', full_coords[:, 1],
             dict(detection_property='mni_y'))
         check_and_write_to_dataset(
-            X[0], 'detection_properties', full_coords[:, 2],
+            X[0], 'detection_properties', full_coords[:, 0],
             dict(detection_property='mni_z'))
         logging.info("ICA peaks are localized.")
         return X
