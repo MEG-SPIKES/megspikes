@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import warnings
-from typing import Dict, Tuple, Union, Any
+from typing import List, Dict, Tuple, Union, Any
 
 import mne
 import numpy as np
@@ -113,8 +113,8 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         return X
 
     def select_ica_components(self, components: np.ndarray,
-                              kurtosis: np.ndarray,
-                              gof: np.ndarray) -> np.ndarray:
+                              kurtosis: np.ndarray, gof: np.ndarray
+                              ) -> np.ndarray:
         """Select ICA components to run pipeline.
 
         Parameters
@@ -827,109 +827,116 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
             Merge atoms if similarity is higher 0.8.
         - Clean repetitions (detections in 10 ms window)
     """
-    def __init__(self, dataset: Union[str, Path],
+    def __init__(self,
+                 detection_dataset: Union[str, Path],
+                 clusters_dataset: Union[str, Path],
                  abs_goodness_threshold: float = 0.9,
-                 max_corr: float = 0.8):
-        self.dataset = dataset
+                 max_corr: float = 0.8, runs: List[int] = [0, 1, 2, 3],
+                 n_atoms: int = 3):
+        self.detection_dataset = detection_dataset
+        self.clusters_dataset = clusters_dataset
         self.abs_goodness_threshold = abs_goodness_threshold
         self.max_corr = max_corr
+        self.runs = runs
+        self.n_atoms = n_atoms
 
     def fit(self, X: Any, y=None):
-        # runs = [0, 1, 2, 3]
-        # Estimate goodness threshold
-
-        # Estimate v_hat and u_hat correlations
+        # assert X[0].name == 'aspire_alphacsc_dataset'
+        ds = xr.load_dataset(self.detection_dataset)
+        X = (ds, None)
+        goodness = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_properties',
+            dict(alphacsc_atom_property='goodness'))
+        alphacsc_atoms = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='alphacsc_atom'))
+        alphacsc_detections = check_and_read_from_dataset(
+            X[0], 'alphacsc_detection',
+            dict(detection_property='alphacsc_detection'))
+        v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
+        u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        spikes, spike_clusters, spike_sensors, spike_runs = self.select_atoms(
+            alphacsc_detections, alphacsc_atoms, goodness, v_hat, u_hat,
+            self.runs, self.n_atoms, [X[0].attrs['grad'], X[0].attrs['mag']])
+        self.spikes = spikes
+        self.spike_clusters = spike_clusters
+        self.spike_sensors = spike_sensors
+        self.spike_runs = spike_runs
+        self.detection_sfreq = X[0].time.attrs['sfreq']
         return self
 
     def transform(self, X) -> xr.Dataset:
-        X = xr.load_dataset(self.dataset)
-        goodness_threshold = self._find_goodness_threshold(X)
+        X = xr.load_dataset(self.clusters_dataset)
+        sfreq = X.time.attrs['sfreq']
+        spikes_mask = self.spikes > 0
+        spikes_ind = np.where(spikes_mask)[0]
+        resampled_spikes = np.int32((spikes_ind/self.detection_sfreq) * sfreq)
+        spikes = np.zeros_like(X.time.values)
+        spikes[resampled_spikes] = 1
+        check_and_write_to_dataset(
+            X, 'spike', spikes, dict(detection_property='detection'))
 
-        timestamps = X["alphacsc_detections_timestamps"].values
-        atoms = X["alphacsc_detections_atom"].values
-        goodness = X["alphacsc_detections_goodness"].values
+        spike_clusters = np.zeros_like(X.time.values)
+        spike_clusters[resampled_spikes] = self.spike_clusters[spikes_mask]
+        check_and_write_to_dataset(
+            X, 'spike', spike_clusters, dict(detection_property='cluster'))
 
-        all_runs = X.run.values
-        sensors = X.sensors.values
+        spike_sensors = np.zeros_like(X.time.values)
+        spike_sensors[resampled_spikes] = self.spike_sensors[spikes_mask]
+        check_and_write_to_dataset(
+            X, 'spike', spike_sensors, dict(detection_property='sensor'))
 
-        atoms_lib_timestamps = []
-        atoms_lib_atom = []
-        atoms_lib_sensors = []
-        atoms_lib_run = []
-        atoms_lib_cluster_id = []
+        spike_runs = np.zeros_like(X.time.values)
+        spike_runs[resampled_spikes] = self.spike_runs[spikes_mask]
+        check_and_write_to_dataset(
+            X, 'spike', spike_runs, dict(detection_property='run'))
+        return X
 
-        goodness_threshold = 0.5
+    def select_atoms(self,
+                     detections: np.ndarray,
+                     atoms: np.ndarray,
+                     goodness: np.ndarray,
+                     v_hats: np.ndarray,
+                     u_hats: np.ndarray,
+                     runs: List[int],
+                     n_atoms: int,
+                     channel_ind: List[List[int]]):
+        spikes = np.zeros(max(detections.shape))
+        spike_clusters = np.zeros(max(detections.shape))
+        spike_sensors = np.zeros(max(detections.shape))
+        spike_runs = np.zeros(max(detections.shape))
 
-        u_hats = X["alphacsc_u_hat"].values
-        v_hats = X["alphacsc_v_hat"].values
+        goodness_threshold = self._find_goodness_threshold(
+            goodness.flatten())
 
         cluster_id = 0
-        for sens, sens_name in enumerate(sensors):
-            n_channels = X["alphacsc_u_hat"].attrs[f"n_{sens_name}"]
-            all_u = []
-            all_v = []
-            for run in all_runs:
-                selected = timestamps[run, sens, :] != 0
-                for atom in np.int32(np.unique(atoms[run, sens, selected])):
-                    selected_atom = atoms[run, sens, selected] == atom
-                    goodness_atom = goodness[run, sens, selected][
-                        selected_atom]
-                    assert len(np.unique(goodness_atom)) == 1
-                    cond1 = goodness_atom[0] > goodness_threshold
+        for sens, ch_ind in enumerate(channel_ind):
+            all_u, all_v = [], []
+            for run in runs:
+                for atom in range(n_atoms):
+                    cond1 = goodness[run, sens, atom] > goodness_threshold
 
-                    u_atom = u_hats[run, sens, atom, :n_channels]
+                    u_atom = u_hats[run, atom, ch_ind]
                     v_atom = v_hats[run, sens, atom, :]
 
                     cond2 = self._atoms_corrs_condition(
                         u_atom, v_atom, all_u, all_v)
                     if cond1 & cond2:
-                        atoms_lib_timestamps += timestamps[
-                            run, sens, selected][selected_atom].tolist()
-                        atoms_lib_atom += [atom]*sum(selected_atom)
-                        atoms_lib_sensors += [sens]*sum(selected_atom)
-                        atoms_lib_run += [run]*sum(selected_atom)
-                        atoms_lib_cluster_id += [
-                            cluster_id]*sum(selected_atom)
+                        detection_mask = ((detections[run, sens] > 0) &
+                                          (atoms[run, sens] == atom))
+                        spikes[detection_mask] = 1
+                        spike_clusters[detection_mask] = cluster_id
+                        spike_sensors[detection_mask] = sens
+                        spike_runs[detection_mask] = run
                         all_u.append(u_atom)
                         all_v.append(v_atom)
                         cluster_id += 1
 
-        assert len(atoms_lib_timestamps) > 0
+        return spikes, spike_clusters, spike_sensors, spike_runs
 
-        atoms_lib_timestamps = np.array(atoms_lib_timestamps)
-        atoms_lib_atom = np.array(atoms_lib_atom)
-        atoms_lib_sensors = np.array(atoms_lib_sensors)
-        atoms_lib_run = np.array(atoms_lib_run)
-        atoms_lib_cluster_id = np.array(atoms_lib_cluster_id)
-
-        # clean repetitions and sort detections
-        sort_unique_ind = np.unique(np.round(atoms_lib_timestamps/10),
-                                    return_index=True)[1]
-        atoms_lib_atom = atoms_lib_atom[sort_unique_ind]
-        atoms_lib_sensors = atoms_lib_sensors[sort_unique_ind]
-        atoms_lib_run = atoms_lib_run[sort_unique_ind]
-        atoms_lib_timestamps = atoms_lib_timestamps[sort_unique_ind]
-        atoms_lib_cluster_id = atoms_lib_cluster_id[sort_unique_ind]
-        n_det = X["clusters_library_timestamps"].values.shape[0]
-
-        if n_det > atoms_lib_atom.shape[0]:
-            n_det = atoms_lib_atom.shape[0]
-
-        X["clusters_library_timestamps"][:n_det] = atoms_lib_timestamps[:n_det]
-        X["clusters_library_atom"][:n_det] = atoms_lib_atom[:n_det]
-        X["clusters_library_sensors"][:n_det] = atoms_lib_sensors[:n_det]
-        X["clusters_library_run"][:n_det] = atoms_lib_run[:n_det]
-        # Unique ID for each cluster
-        X["clusters_library_cluster_id"][:n_det] = atoms_lib_cluster_id[:n_det]
-        X.to_netcdf(self.dataset, mode='a', format="NETCDF4",
-                    engine="netcdf4")
-        return xr.load_dataset(self.dataset)
-
-    def _find_goodness_threshold(self, ds):
-        goodness = ds["alphacsc_detections_goodness"].values.flatten()
+    def _find_goodness_threshold(self, goodness):
         # Atoms' goodness
-        # unique because goodness is repeated for each timestamp
-        goodness = np.unique(goodness[goodness != 0])
+        goodness = goodness[goodness != 0]
         mean_goodness = np.mean(goodness) / len(goodness)
         std_goodness = np.std(goodness) / len(goodness)
 
@@ -955,3 +962,16 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
             return True
         else:
             return True
+
+
+class ManualDetections(TransformerMixin, BaseEstimator):
+    """Convert manual detections to clusters dataset.
+    """
+    def __init__(self, detection_dataset: Union[str, Path],) -> None:
+        self.detection_dataset = detection_dataset
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        pass

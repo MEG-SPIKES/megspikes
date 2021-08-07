@@ -302,7 +302,7 @@ class Database():
         mag_inx = self.channels_by_sensors['mag']
 
         detection_property_coords = xr.DataArray(
-            data=['detection', 'cluster'],
+            data=['detection', 'cluster', 'sensor', 'run'],
             dims=('detection_property'),
             attrs={},
             name='detection_property')
