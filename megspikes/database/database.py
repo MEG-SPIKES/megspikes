@@ -354,6 +354,8 @@ class SaveDataset(TransformerMixin, BaseEstimator):
         ds['alphacsc_z_hat'].loc[selection_pipe_sens] = X[0].alphacsc_z_hat
         ds['alphacsc_v_hat'].loc[selection_pipe_sens] = X[0].alphacsc_v_hat
         ds['alphacsc_u_hat'].loc[selection_pipe_ch] = X[0].alphacsc_u_hat
+        ds['alphacsc_atoms_properties'].loc[selection_pipe_sens] = X[
+            0].alphacsc_atoms_properties
         ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                      engine="netcdf4")
         return X

@@ -216,8 +216,8 @@ class PlotPipeline():
 
             # Plot the temporal pattern of the atom
             ax = next(it_axes)
-            # t = ds.atom_v_time.values
-            ax.plot(v_k)
+            t = ds.atom_v_time.values
+            ax.plot(t, v_k)
             # ax.set_xlim(0, int(round(sfreq * atom_width)) / sfreq)
             ax.set(xlabel='Time (sec)',
                    title="Temporal pattern %d" % kk)
@@ -234,18 +234,19 @@ class PlotPipeline():
         atoms = check_and_read_from_dataset(
             ds, 'detection_properties',
             dict(detection_property='alphacsc_atom'))
-        # goodness = check_and_read_from_dataset(
-        #     ds, 'alphacsc_atoms_properties',
-        #     dict(alphacsc_atom_property='goodness'))
+        goodness = check_and_read_from_dataset(
+            ds, 'alphacsc_atoms_properties',
+            dict(alphacsc_atom_property='goodness'))
         u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
         v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
-        goodness = 4  # goodness[atom]
+        goodness = goodness[atom]
         u_hat = u_hat[atom]
         max_channel = np.argmax(u_hat)
         v_hat = v_hat[atom]
         v_hat = v_hat / (np.max(np.abs(v_hat)))
-        v_hat_times = np.linspace(-0.25, 0.25, len(v_hat))
-        # v_hat_times = ds.atom_v_time.values
+        # v_hat_times = np.linspace(-0.25, 0.25, len(v_hat))
+        v_hat_times = ds.atom_v_time.values
+        v_hat_times -= v_hat_times.mean()
 
         detection_mask = (detections > 0) & (atoms == atom)
         spikes = np.where(detection_mask)[0]
@@ -255,13 +256,13 @@ class PlotPipeline():
         evoked = epochs.average()
         spikes = epochs.get_data()[:, max_channel, :]
 
-        fig = plt.figure(figsize=(15, 7))
+        fig = plt.figure(figsize=(10, 5), dpi=150)
         ax1 = plt.subplot(2, 2, 1)
         spikes_max_channel = spikes.T/(np.max(np.abs(spikes)))
         spikes_max_channel_times = np.linspace(
             -0.25, 0.25, n_samples_epoch)
         ax1.plot(spikes_max_channel_times, spikes_max_channel,
-                 lw=0.5, c='k', label='Single events')
+                 lw=0.3, c='k', alpha=0.5, label='Single events')
         ax1.plot(v_hat_times, v_hat,
                  c='r', label='Atom')
 
