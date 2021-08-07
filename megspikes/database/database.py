@@ -417,6 +417,9 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             self.update_selected_fields(X[0], ds)
             ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                          engine="netcdf4")
+        elif isinstance(self.sensors, str) | isinstance(self.run, int):
+            raise RuntimeError(f'Sensors {type(self.sensors)} or run '
+                               f'{type(self.run)} have a wrong type.')
         else:
             X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
                            engine="netcdf4")

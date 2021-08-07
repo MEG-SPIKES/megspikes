@@ -20,7 +20,7 @@ def test_pipeline(simulation, dataset):
     n_ica_components = len(dataset.ica_component)
     n_ica_peaks = 50
     resample = dataset.time.attrs['sfreq']
-    n_atoms = len(dataset.atom)  # FIXME: one atom cause bugs
+    n_atoms = len(dataset.alphacsc_atom)  # FIXME: one atom cause bugs
     z_hat_threshold = 1.
     z_hat_threshold_min = 0.1
 
