@@ -107,8 +107,7 @@ class Database():
         n_alphacsc_atoms = self.n_atoms
         alphacsc_atoms_coords = np.arange(n_alphacsc_atoms)
         atom_length = int(self.atom_length * sfreq)
-        atom_v_times = np.linspace(
-            0, round(atom_length / sfreq, 0), atom_length)
+        atom_v_times = np.linspace(0, self.atom_length, atom_length)
         alphacsc_atoms_properties_coords = xr.DataArray(
             data=['mni_x', 'mni_y', 'mni_z', 'gof', 'goodness'],
             dims=('alphacsc_atom_property'),

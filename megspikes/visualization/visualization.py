@@ -5,10 +5,12 @@ import xarray as xr
 from scipy import signal
 import holoviews as hv
 # from holoviews import opts
-# import hvplot.xarray
+import hvplot.xarray
 from sklearn import preprocessing
 import panel.widgets as pnw
 import panel as pn
+from ..utils import create_epochs
+from ..database.database import (check_and_read_from_dataset)
 hv.extension('bokeh')
 
 mne.set_log_level("WARNING")
@@ -18,7 +20,7 @@ class PlotPipeline():
     def __init__(self) -> None:
         pass
 
-    def plot_ica_components(self, arr: xr.DataArray, info: mne.Info,
+    def plot_ica_components(self, ds: xr.Dataset, info: mne.Info,
                             sensors: str = 'grad', n_columns: int = 5):
         """Plot ICA components.
         NOTE: the colorbar is not the same for all components
@@ -41,8 +43,9 @@ class PlotPipeline():
             Plot with all ica components
         """
         info = mne.pick_info(info, mne.pick_types(info, meg=sensors))
-        data = arr.loc[sensors, :, :].values
-        n_sens = arr.attrs[f"n_{sensors}"]
+        data = ds.ica_components.loc[
+            dict(channel=ds.channel_names.attrs[sensors])].values
+        n_sens = len(ds.channel_names.attrs[sensors])
 
         # set figure
         n_components = data.shape[0]
@@ -185,8 +188,111 @@ class PlotPipeline():
     def plot_aspire_clusters(self):
         pass
 
-    def plot_alphacsc_atoms(self):
-        pass
+    def plot_alphacsc_atoms(self, ds: xr.Dataset, info: mne.Info):
+        u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
+        v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
+        plotted_atoms = ds.alphacsc_atom.values
+
+        n_plots = 2  # number of plots by atom
+        n_columns = min(3, len(plotted_atoms))
+        split = int(np.ceil(len(plotted_atoms) / n_columns))
+        figsize = (5 * n_columns, 4 * n_plots * split)
+        fig, axes = plt.subplots(n_plots * split, n_columns, figsize=figsize)
+
+        for ii, kk in enumerate(plotted_atoms):
+
+            i_row, i_col = ii // n_columns, ii % n_columns
+            it_axes = iter(axes[i_row * n_plots:(i_row + 1) * n_plots, i_col])
+
+            # Select the current atom
+            u_k = u_hat[kk]
+            v_k = v_hat[kk]
+
+            # Plot the spatial map of the atom using mne topomap
+            ax = next(it_axes)
+            mne.viz.plot_topomap(u_k, info, axes=ax, show=False)
+            # _gof = round(gof[ii], 2) if len(gof) != 0 else 0
+            # ax.set(title="Spatial pattern {} \n GOF {}".format(kk, _gof))
+
+            # Plot the temporal pattern of the atom
+            ax = next(it_axes)
+            # t = ds.atom_v_time.values
+            ax.plot(v_k)
+            # ax.set_xlim(0, int(round(sfreq * atom_width)) / sfreq)
+            ax.set(xlabel='Time (sec)',
+                   title="Temporal pattern %d" % kk)
+
+        fig.tight_layout()
+        return fig
+
+    def plot_alphacsc_clusters(self, ds: xr.Dataset, raw: mne.io.Raw,
+                               atom: int = 0):
+        sfreq = raw.info['sfreq']
+        detections = check_and_read_from_dataset(
+            ds, 'detection_properties',
+            dict(detection_property='alphacsc_detection'))
+        atoms = check_and_read_from_dataset(
+            ds, 'detection_properties',
+            dict(detection_property='alphacsc_atom'))
+        # goodness = check_and_read_from_dataset(
+        #     ds, 'alphacsc_atoms_properties',
+        #     dict(alphacsc_atom_property='goodness'))
+        u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
+        v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
+        goodness = 4  # goodness[atom]
+        u_hat = u_hat[atom]
+        max_channel = np.argmax(u_hat)
+        v_hat = v_hat[atom]
+        v_hat = v_hat / (np.max(np.abs(v_hat)))
+        v_hat_times = np.linspace(-0.25, 0.25, len(v_hat))
+        # v_hat_times = ds.atom_v_time.values
+
+        detection_mask = (detections > 0) & (atoms == atom)
+        spikes = np.where(detection_mask)[0]
+        spikes = (spikes / ds.time.attrs['sfreq']) * sfreq
+        epochs = create_epochs(raw, spikes, -0.25, 0.25)
+        n_samples_epoch = len(epochs.times)
+        evoked = epochs.average()
+        spikes = epochs.get_data()[:, max_channel, :]
+
+        fig = plt.figure(figsize=(15, 7))
+        ax1 = plt.subplot(2, 2, 1)
+        spikes_max_channel = spikes.T/(np.max(np.abs(spikes)))
+        spikes_max_channel_times = np.linspace(
+            -0.25, 0.25, n_samples_epoch)
+        ax1.plot(spikes_max_channel_times, spikes_max_channel,
+                 lw=0.5, c='k', label='Single events')
+        ax1.plot(v_hat_times, v_hat,
+                 c='r', label='Atom')
+
+        # Clean individual lables
+        handles, labels = ax1.get_legend_handles_labels()
+        i = 1
+        while i < len(labels):
+            if labels[i] in labels[:i]:
+                del(labels[i])
+                del(handles[i])
+            else:
+                i += 1
+        ax1.legend(handles, labels, fontsize='xx-small')
+        ax1.set_title("Channel {} and atom {} waveform \n Goodness {}".format(
+            epochs.info['ch_names'][max_channel], atom, round(goodness, 2)))
+
+        # Plot epochs image
+        ax2 = plt.subplot(2, 2, 2)
+        epochs.plot_image(picks=[max_channel], colorbar=False, axes=[ax2],
+                          evoked=False, show=False)
+
+        times = [
+            epochs.times[t] for t in range(
+                10, n_samples_epoch-10, n_samples_epoch // 10)]
+        for n, time in enumerate(times):
+            ax = plt.subplot(2, len(times), len(times) + n+1)
+            evoked.plot_topomap(
+                time, axes=ax, show=False, colorbar=False, contours=0)
+        return fig
+
+
 
     def plot_clusters_library(self):
         pass
