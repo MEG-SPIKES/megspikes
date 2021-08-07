@@ -8,34 +8,26 @@ import mne
 
 class Database():
     def __init__(self,
-                 n_fwd_sources: int = 20_000,
-                 sensors: List[str] = ['grad', 'mag'],
-                 channels_by_sensors: Dict[str, np.ndarray] = {
-                     'grad': np.arange(0, 204),
-                     'mag': np.arange(204, 306)},
-                 channel_names: List[str] = [f'MEG {i}' for i in range(306)],
-                 n_ica_components: int = 20,
-                 sfreq1: int = 1000,
-                 sfreq2: int = 200,
-                 n_aspire_alphacsc_runs: int = 4,
-                 n_atoms: int = 3,
-                 atom_length: float = 0.5,  # seconds
-                 ):
-        self.n_fwd_sources = n_fwd_sources
-        self.channels_by_sensors = channels_by_sensors
+                 sensors: List[str],
+                 channel_names: List[str],
+                 channels_by_sensors: Dict[str, List[int]],
+                 fwd_sources: List[List[int]]):
+        self.fwd_sources = fwd_sources
         self.sensors = sensors
+        self.channels_by_sensors = channels_by_sensors
         self.channel_names = channel_names
-        self.n_ica_components = n_ica_components
-        self.sfreq1 = sfreq1  # Hz before downsampling
-        self.sfreq2 = sfreq2  # Hz after downsampling
-        self.n_atoms = n_atoms
-        self.n_aspire_alphacsc_runs = n_aspire_alphacsc_runs
-        self.atom_length = atom_length  # ms
 
-    def make_empty_dataset(self, times: np.ndarray) -> xr.Dataset:
-        # TODO: rename to 'make_empty_aspire_alphacsc_dataset'
+    def make_aspire_alphacsc_dataset(self,
+                                     times: np.ndarray,
+                                     n_ica_components: int,
+                                     n_atoms: int,
+                                     atom_length: float,
+                                     n_runs: int,
+                                     sfreq: float = 200.,
+                                     ) -> xr.Dataset:
+
+        # ---- Prepare dimensions and coordinates ---- #
         # time coordinate
-        sfreq = self.sfreq2
         t = xr.DataArray(
             data=times,
             dims=("time"),
@@ -46,6 +38,9 @@ class Database():
             name='time')
         meg_data_length = len(t)
 
+        # runs
+        runs = np.arange(n_runs)
+
         # channels and sensors
         sensors = self.sensors
         channel_names_list = self.channel_names
@@ -53,14 +48,7 @@ class Database():
         grad_inx = self.channels_by_sensors['grad']
         mag_inx = self.channels_by_sensors['mag']
 
-        # pipeline steps
-        runs_rng = range(1, self.n_aspire_alphacsc_runs + 1)
-        pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
-        pipelines += ["aspire_alphacsc_atoms_library"]
-        pipelines += ["manual"]
-        self.pipelines_names = pipelines
-
-        # detected evensts properties
+        # detected events properties
         detection_properties = xr.DataArray(
             data=['ica_detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
                   'subcorr', 'selected_for_alphacsc', 'alphacsc_detection',
@@ -88,7 +76,6 @@ class Database():
             name='detection_properties')
 
         # ica components
-        n_ica_components = self.n_ica_components
         ica_components_coords = np.arange(n_ica_components)
         ica_component_properties_coords = xr.DataArray(
             data=['mni_x', 'mni_y', 'mni_z', 'gof', 'kurtosis'],
@@ -104,10 +91,10 @@ class Database():
             name='ica_component_properties_coords')
 
         # alphacsc atoms
-        n_alphacsc_atoms = self.n_atoms
+        n_alphacsc_atoms = n_atoms
         alphacsc_atoms_coords = np.arange(n_alphacsc_atoms)
-        atom_length = int(self.atom_length * sfreq)
-        atom_v_times = np.linspace(0, self.atom_length, atom_length)
+        atom_length = int(atom_length * sfreq)
+        atom_v_times = np.linspace(0, atom_length, atom_length)
         alphacsc_atoms_properties_coords = xr.DataArray(
             data=['mni_x', 'mni_y', 'mni_z', 'gof', 'goodness'],
             dims=('alphacsc_atom_property'),
@@ -122,6 +109,8 @@ class Database():
                 },
             name='alphacsc_atoms_properties_coords')
 
+        # ---- Prepare dataarrays ---- #
+
         channel_names = xr.DataArray(
             data=channel_names_list,
             dims=("channel"),
@@ -134,11 +123,11 @@ class Database():
 
         detection_properties = xr.DataArray(
             data=np.zeros(
-                (len(pipelines), len(sensors),
+                (n_runs, len(sensors),
                  len(detection_properties), meg_data_length)),
-            dims=("pipeline", "sensors", "detection_property", "time"),
+            dims=("run", "sensors", "detection_property", "time"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "sensors": sensors,
                 "detection_property": detection_properties,
                 "time": t
@@ -184,10 +173,10 @@ class Database():
             name="ica_component_properties")
 
         ica_component_selection = xr.DataArray(
-            data=np.zeros((len(pipelines), len(sensors), n_ica_components)),
-            dims=("pipeline", "sensors", "ica_component"),
+            data=np.zeros((n_runs, len(sensors), n_ica_components)),
+            dims=("run", "sensors", "ica_component"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "sensors": sensors,
                 "ica_component": ica_components_coords,
             },
@@ -195,11 +184,11 @@ class Database():
 
         alphacsc_z_hat = xr.DataArray(
             data=np.zeros((
-                len(pipelines), len(sensors), n_alphacsc_atoms,
+                n_runs, len(sensors), n_alphacsc_atoms,
                 meg_data_length)),
-            dims=("pipeline", "sensors", "alphacsc_atom", "time"),
+            dims=("run", "sensors", "alphacsc_atom", "time"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "sensors": sensors,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "time": t
@@ -211,10 +200,10 @@ class Database():
 
         alphacsc_v_hat = xr.DataArray(
             data=np.zeros(
-                (len(pipelines), len(sensors), n_alphacsc_atoms, atom_length)),
-            dims=("pipeline", "sensors", "alphacsc_atom", "atom_v_time"),
+                (n_runs, len(sensors), n_alphacsc_atoms, atom_length)),
+            dims=("run", "sensors", "alphacsc_atom", "atom_v_time"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "sensors": sensors,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "atom_v_time": atom_v_times
@@ -225,10 +214,10 @@ class Database():
             name="alphacsc_v_hat")
 
         alphacsc_u_hat = xr.DataArray(
-            data=np.zeros((len(pipelines), n_alphacsc_atoms, len(channels))),
-            dims=("pipeline", "alphacsc_atom", "channel"),
+            data=np.zeros((n_runs, n_alphacsc_atoms, len(channels))),
+            dims=("run", "alphacsc_atom", "channel"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "channel": channels
             },
@@ -241,17 +230,19 @@ class Database():
 
         alphacsc_atoms_properties = xr.DataArray(
             data=np.zeros(
-                (len(pipelines), len(sensors), n_alphacsc_atoms,
+                (n_runs, len(sensors), n_alphacsc_atoms,
                  len(alphacsc_atoms_properties_coords))),
-            dims=("pipeline", "sensors", "alphacsc_atom",
+            dims=("run", "sensors", "alphacsc_atom",
                   "alphacsc_atom_property"),
             coords={
-                "pipeline": pipelines,
+                "run": runs,
                 "sensors": sensors,
                 "alphacsc_atom": alphacsc_atoms_coords,
                 "alphacsc_atom_property": alphacsc_atoms_properties_coords,
             },
             name="alphacsc_atoms_properties")
+
+        # ---- Create dataset ---- #
 
         ds = xr.merge([
             channel_names,
@@ -268,8 +259,9 @@ class Database():
         return ds
 
     def make_clusters_dataset(self, times: np.ndarray, n_clusters: int,
-                              evoked_length: int):
-        sfreq = self.sfreq1
+                              evoked_length: float, sfreq: float = 1000.
+                              ) -> xr.Dataset:
+        # ---- Prepare dimensions and coordinates ---- #
         cluster = xr.DataArray(
             data=np.arange(n_clusters),
             dims=("cluster"),
@@ -293,12 +285,13 @@ class Database():
             },
             name='time_evoked')
 
+        n_fwd_sources = sum([len(h) for h in self.fwd_sources])
         source = xr.DataArray(
-            data=np.arange(self.n_fwd_sources),
-            dims=("vertex"),
+            data=np.arange(n_fwd_sources),
+            dims=("source"),
             attrs={
-                'lh_vertno': self.fwd_sources_no[0],
-                'rh_vertno': self.fwd_sources_no[1],
+                'lh_vertno': self.fwd_sources[0],
+                'rh_vertno': self.fwd_sources[1],
             },
             name='source')
 
@@ -319,6 +312,8 @@ class Database():
                   'time_slope', 'time_peak'],
             dims=('cluster_property'),
             name='cluster_property')
+
+        # ---- Prepare dataarrays ---- #
 
         channel_names = xr.DataArray(
             data=channel_names_list,
@@ -343,7 +338,7 @@ class Database():
             name="spike")
 
         cluster_properties = xr.DataArray(
-            data=np.zeros((len(times), len(detection_property_coords))),
+            data=np.zeros((n_clusters, len(cluster_property_coords))),
             dims=("cluster", "cluster_property"),
             coords={
                 "cluster": cluster,
@@ -371,6 +366,8 @@ class Database():
                 },
             name="evoked")
 
+        # ---- Create dataset ---- #
+
         ds = xr.merge([
             channel_names,
             spike,
@@ -380,109 +377,85 @@ class Database():
             ])
         return ds
 
-    def read_case_info(self, fif_file_path: Union[str, Path],
-                       fwd: mne.Forward,
-                       sfreq: Union[float, None] = None) -> None:
-        if not Path(fif_file_path).is_file():
-            raise RuntimeError("Fif file was not found")
-        fif_file = mne.io.read_raw_fif(fif_file_path, preload=False)
-        if sfreq is not None:
-            fif_file.load_data()
-            fif_file = fif_file.resample(sfreq, npad="auto")
-        info = fif_file.info
-        # TODO: other sensors types
-        for sens in ['grad', 'mag']:
-            self.channels_by_sensors[sens] = mne.pick_types(info, meg=sens)
-        self.channel_names = info['ch_names']
-        # length of the MEG recording in seconds
-        self.times = fif_file.times
-        self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
-        # first: left hemi, second: right hemi
-        self.fwd_sources_no = [['vertno'] for h in fwd['src']]
-        del fif_file, fwd
-
     def select_sensors(self, ds: xr.Dataset, sensors: str,
-                       pipeline: str) -> xr.Dataset:
-        ds_subset, _ = select_sensors(ds, sensors, pipeline)
+                       run: int) -> xr.Dataset:
+        ds_subset, _ = select_sensors(ds, sensors, run)
         return ds_subset
 
 
 class LoadDataset(TransformerMixin, BaseEstimator):
     def __init__(self, dataset: Union[str, Path], sensors: str,
-                 pipeline: int) -> None:
+                 run: int) -> None:
         self.dataset = dataset
         self.sensors = sensors
-        self.pipeline = pipeline
+        self.run = run
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
         ds = xr.load_dataset(self.dataset)
-        ds_channels, _ = select_sensors(ds, self.sensors, self.pipeline)
+        ds_channels, _ = select_sensors(ds, self.sensors, self.run)
         return (ds_channels, X[1])
 
 
 class SaveDataset(TransformerMixin, BaseEstimator):
     """Save merge subset of the database in the full dataset
     """
-    def __init__(self, dataset: Union[str, Path], sensors: str,
-                 pipeline: int) -> None:
+    def __init__(self, dataset: Union[str, Path], sensors: Union[str, None],
+                 run: Union[int, None]) -> None:
         self.dataset = dataset
         self.sensors = sensors
-        self.pipeline = pipeline
+        self.run = run
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        ds = xr.load_dataset(self.dataset)
-        _, selection = select_sensors(ds, self.sensors, self.pipeline)
+        if isinstance(self.sensors, str) & isinstance(self.run, int):
+            ds = xr.load_dataset(self.dataset)
+            self.update_selected_fields(X[0], ds)
+            ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                         engine="netcdf4")
+        else:
+            X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                           engine="netcdf4")
+        return X
+
+    def update_selected_fields(self, from_ds: xr.Dataset, to_ds: xr.Dataset):
         # TODO: avoid manual update
         # Won't working because selection is no applicable to all ds variables
         # ds.loc[selection] = ds_grad
-        selection_ch = ds.attrs[self.sensors]
         selection_sens = dict(sensors=self.sensors)
-        selection_pipe_sens = dict(
-            pipeline=self.pipeline, sensors=self.sensors)
-        selection_pipe_ch = dict(
-            pipeline=self.pipeline, channel=selection_ch)
+        to_ds['ica_sources'].loc[selection_sens] = from_ds.ica_sources
+        to_ds['ica_component_properties'].loc[
+            selection_sens] = from_ds.ica_component_properties
 
-        ds['ica_sources'].loc[selection_sens] = X[0].ica_sources
-        ds['ica_components'].loc[:, selection_ch] = X[0].ica_components
-        ds['ica_component_properties'].loc[
-            selection_sens] = X[0].ica_component_properties
-        ds['ica_component_selection'].loc[
-            selection_pipe_sens] = X[0].ica_component_selection
-        ds['detection_properties'].loc[
-            selection_pipe_sens] = X[0].detection_properties
-        ds['alphacsc_z_hat'].loc[selection_pipe_sens] = X[0].alphacsc_z_hat
-        ds['alphacsc_v_hat'].loc[selection_pipe_sens] = X[0].alphacsc_v_hat
-        ds['alphacsc_u_hat'].loc[selection_pipe_ch] = X[0].alphacsc_u_hat
-        ds['alphacsc_atoms_properties'].loc[selection_pipe_sens] = X[
-            0].alphacsc_atoms_properties
-        ds.to_netcdf(self.dataset, mode='a', format="NETCDF4",
-                     engine="netcdf4")
-        return X
+        selection_ch = to_ds.attrs[self.sensors]
+        to_ds['ica_components'].loc[:, selection_ch] = from_ds.ica_components
+        selection_run_sens = dict(
+            run=self.run, sensors=self.sensors)
+        to_ds['ica_component_selection'].loc[
+            selection_run_sens] = from_ds.ica_component_selection
+        to_ds['detection_properties'].loc[
+            selection_run_sens] = from_ds.detection_properties
+        to_ds['alphacsc_z_hat'].loc[
+            selection_run_sens] = from_ds.alphacsc_z_hat
+        to_ds['alphacsc_v_hat'].loc[
+            selection_run_sens] = from_ds.alphacsc_v_hat
+        to_ds['alphacsc_atoms_properties'].loc[
+            selection_run_sens] = from_ds.alphacsc_atoms_properties
 
-
-class SaveFullDataset(TransformerMixin, BaseEstimator):
-    def __init__(self, dataset: Union[str, Path]) -> None:
-        self.dataset = dataset
-
-    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
-                       engine="netcdf4")
-        return X
+        selection_run_ch = dict(
+            run=self.run, channel=selection_ch)
+        to_ds['alphacsc_u_hat'].loc[
+            selection_run_ch] = from_ds.alphacsc_u_hat
 
 
 def select_sensors(ds: xr.Dataset, sensors: str,
-                   pipeline: str) -> xr.Dataset:
+                   run: int) -> xr.Dataset:
     channels = ds.channel_names.attrs[sensors]
-    selection = dict(pipeline=pipeline, sensors=sensors, channel=channels)
+    selection = dict(run=run, sensors=sensors, channel=channels)
     return ds.loc[selection], selection
 
 
@@ -528,3 +501,20 @@ def check_and_write_to_dataset(ds: xr.Dataset, da_name: str,
         assert ds[da_name].shape == variable.shape, (
             f"Wrong shape of the variable to write in {da_name}")
         ds[da_name].values = variable
+
+
+def read_meg_info_for_database(fif_file_path: Union[str, Path],
+                               fwd: mne.Forward) -> Database:
+    if not Path(fif_file_path).is_file():
+        raise RuntimeError("Fif file was not found")
+    info = mne.io.read_info(fif_file_path)
+    # TODO: other sensors types
+    sensors = ['grad', 'mag']
+    channels_by_sensors = {}
+    for sens in sensors:
+        channels_by_sensors[sens] = mne.pick_types(info, meg=sens)
+    channel_names = info['ch_names']
+    # first: left hemi, second: right hemi
+    fwd_sources = [['vertno'] for h in fwd['src']]
+    del fwd
+    return Database(sensors, channel_names, channels_by_sensors, fwd_sources)

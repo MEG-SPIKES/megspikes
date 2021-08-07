@@ -29,17 +29,17 @@ def spikes_waveforms():
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_ica_decomposition(db, dataset, simulation, sensors):
-    pipeline = "aspire_alphacsc_run_1"
-    n_ica_comp = db.n_ica_components
-    _, sel = select_sensors(dataset, 'grad', pipeline)
+def test_ica_decomposition(dataset, simulation, sensors):
+    run = 0
+    n_ica_comp = len(dataset.ica_component)
+    _, sel = select_sensors(dataset, 'grad', run)
     dataset.loc[sel].ica_components.values *= 0
-    _, sel = select_sensors(dataset, 'mag', pipeline)
+    _, sel = select_sensors(dataset, 'mag', run)
     dataset.loc[sel].ica_components.values *= 0
 
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=dataset.time.attrs['sfreq'])
-    ds_channles = db.select_sensors(dataset, sensors, pipeline)
+    ds_channles, _ = select_sensors(dataset, sensors, run)
     ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
 
     decomposition = DecompositionICA(n_components=n_ica_comp)
@@ -52,10 +52,10 @@ def test_ica_decomposition(db, dataset, simulation, sensors):
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # FIXME: add more tests
     "gof,kurtosis,sel_comp,run",
     [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0),
-     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 0, 0], 1)])  # FIXME:
+     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 1)])
 def test_components_selection(dataset, sensors, gof, kurtosis, sel_comp, run):
     dataset["ica_component_properties"].loc[
         dict(sensors=sensors, ica_component_property="gof")
@@ -63,8 +63,8 @@ def test_components_selection(dataset, sensors, gof, kurtosis, sel_comp, run):
     dataset["ica_component_properties"].loc[
         dict(sensors=sensors, ica_component_property="kurtosis")
         ] = np.array(kurtosis)
-    pipeline = f"aspire_alphacsc_run_{run+1}"
-    ds_channles, _ = select_sensors(dataset, sensors, pipeline)
+    run = 0
+    ds_channles, _ = select_sensors(dataset, sensors, run)
     ds_channles['ica_component_selection'] *= 0
     selection = ComponentsSelection(run=run)
     (results, _) = selection.fit_transform((ds_channles, None))
@@ -85,10 +85,10 @@ def test_components_selection_detailed(run, n_runs, n_components):
 
 
 @pytest.mark.happy
-def test_peaks_detection(db, dataset):
+def test_peaks_detection(dataset):
     dataset['ica_component_selection'] *= 0
     dataset['ica_component_selection'] += 1
-    ds_grad = db.select_sensors(dataset, 'grad', "aspire_alphacsc_run_1")
+    ds_grad, _ = select_sensors(dataset, 'grad', 0)
     peak_detection = PeakDetection(prominence=2., width=1.)
     (results, _) = peak_detection.fit_transform((ds_grad, None))
     # assert results["ica_peaks_timestamps"].values.any()
@@ -139,31 +139,29 @@ def test_detection_cleaning_details(times, subcorr, selection,
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_alphacsc_decomposition(simulation, db, dataset, sensors):
-    pipeline = "aspire_alphacsc_run_1"
-
+def test_alphacsc_decomposition(simulation, dataset, sensors):
+    run = 0
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
-    ds_channles = db.select_sensors(dataset, sensors, pipeline)
-
+    ds_channles, _ = select_sensors(dataset, sensors, run)
     ds_channles.detection_properties.loc[
         dict(detection_property='selected_for_alphacsc')] *= 0
     ds_channles.detection_properties.loc[
         dict(detection_property='selected_for_alphacsc')][
             [500, 600, 700]] = 1
     (ds_channles, data) = pd.fit_transform(ds_channles)
-    alpha = DecompositionAlphaCSC()
+    alpha = DecompositionAlphaCSC(n_atoms=len(dataset.alphacsc_atom.values))
     results, _ = alpha.fit_transform((ds_channles, data))
     # TODO: add tests
 
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_alphacsc_events_selection(dataset, db, simulation, sensors):
-    pipeline = "aspire_alphacsc_run_1"
+def test_alphacsc_events_selection(dataset, simulation, sensors):
+    run = 0
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
-    ds_channles = db.select_sensors(dataset, sensors, pipeline)
+    ds_channles, _ = select_sensors(dataset, sensors, run)
     ds_channles.detection_properties.loc[
         dict(detection_property='selected_for_alphacsc')] *= 0
     ica_peaks = [300, 350, 500, 600, 700]
@@ -172,7 +170,8 @@ def test_alphacsc_events_selection(dataset, db, simulation, sensors):
             ica_peaks] = 1
     z_peaks = [i - 60 for i in ica_peaks]
     ds_channles.alphacsc_z_hat[:, z_peaks] = 20
-    sel = SelectAlphacscEvents(sensors=sensors)
+    sel = SelectAlphacscEvents(
+        sensors=sensors, n_atoms=len(dataset.alphacsc_atom.values))
     (ds_channles, data) = pd.fit_transform(ds_channles)
     sel.fit_transform((ds_channles, data))
 

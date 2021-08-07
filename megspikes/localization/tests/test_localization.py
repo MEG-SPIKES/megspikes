@@ -21,11 +21,11 @@ def sample_path():
 
 @pytest.mark.happy
 def test_components_localization(dataset, simulation):
-    pipeline = "aspire_alphacsc_run_1"
+    run = 0
     sensors = 'grad'
     case = simulation.case_manager
     prep_data = PrepareData(sensors=sensors)
-    ds_grad, sel = select_sensors(dataset, sensors, pipeline)
+    ds_grad, sel = select_sensors(dataset, sensors, run)
     (ds_grad, raw) = prep_data.fit_transform(
         (ds_grad, simulation.raw_simulation))
     cl = ICAComponentsLocalization(case=case, sensors=sensors)
@@ -88,7 +88,7 @@ def test_fast_rap_music_details(simulation):
     dip_pos = mne.head_to_mni(
             dipoles[0].pos,  pk.case_name, pk.fwd['mri_head_t'],
             subjects_dir=pk.freesurfer_dir)
-    np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
+    assert np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
 
 
 def test_clusters_localization(dataset, simulation):

@@ -1,9 +1,8 @@
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.database.database import (LoadDataset, SaveDataset,
-                                         SaveFullDataset)
-from megspikes.detection.detection import (CleanDetections, ClustersMerging,
+from megspikes.database.database import (LoadDataset, SaveDataset)
+from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            DecompositionAlphaCSC,
                                            DecompositionICA, PeakDetection,
@@ -18,21 +17,21 @@ def aspike_alphacsc_pipeline(case: CaseManager, n_ica_components: int = 20,
                              resample: float = 200., n_ica_peaks: int = 2000,
                              n_cleaned_peaks: int = 300, n_atoms=3,
                              z_hat_threshold=3., z_hat_threshold_min=1.5,
-                             pipe_names=['aspire_alphacsc_run_1']):
+                             runs=[0, 1, 2, 3]):
     pipe_sensors = []
     pipe_runs = []
 
     for sens in ['grad', 'mag']:
-        for run, pipe_name in enumerate(pipe_names):
+        for run in runs:
             pipe_runs.append(
-                (pipe_name,
+                (f"run_{run}",
                  Pipeline([
                     ('prepare_data',
                      PrepareData(sensors=sens, resample=resample)),
                     ('load_select_dataset',
                      LoadDataset(
                          dataset=case.dataset, sensors=sens,
-                         pipeline=pipe_name)),
+                         run=run)),
                     ('select_ica_components', ComponentsSelection(run=run)),
                     ('detect_ica_peaks',
                      PeakDetection(prominence=8., width=2.,
@@ -54,7 +53,7 @@ def aspike_alphacsc_pipeline(case: CaseManager, n_ica_components: int = 20,
                     ('save_dataset',
                      SaveDataset(
                          dataset=case.dataset, sensors=sens,
-                         pipeline=pipe_name)),
+                         run=run)),
                     ('test', ToFinish())
                     ])))
         pipe_sensors.append(
@@ -67,14 +66,14 @@ def aspike_alphacsc_pipeline(case: CaseManager, n_ica_components: int = 20,
                      resample=resample)),
                 ('select_dataset',
                  LoadDataset(dataset=case.dataset, sensors=sens,
-                             pipeline=pipe_name)),
+                             run=run)),
                 ('ica_decomposition',
                  DecompositionICA(n_components=n_ica_components)),
                 ('components_localization',
                  ICAComponentsLocalization(case=case, sensors=sens)),
                 ('save_dataset',
                     SaveDataset(dataset=case.dataset, sensors=sens,
-                                pipeline=pipe_name)),
+                                run=run)),
                 ('spikes_detection', FeatureUnion(pipe_runs))
                 ])))
         pipe_runs = []
@@ -88,6 +87,6 @@ def aspike_alphacsc_pipeline(case: CaseManager, n_ica_components: int = 20,
         #     db_name_clusters='clusters_library_cluster_id',
         #     detection_sfreq=resample)),
         # ('predict_IZ', PredictIZClusters(case=case)),
-        # ('save_dataset', SaveFullDataset(dataset=case.dataset))
+        # ('save_dataset', SaveDataset(dataset=case.dataset))
         ])
     return pipe

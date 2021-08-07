@@ -1,16 +1,17 @@
+import holoviews as hv
+import hvplot.xarray
 import matplotlib.pylab as plt
 import mne
 import numpy as np
+import panel as pn
+import panel.widgets as pnw
 import xarray as xr
 from scipy import signal
-import holoviews as hv
-# from holoviews import opts
-import hvplot.xarray
 from sklearn import preprocessing
-import panel.widgets as pnw
-import panel as pn
+
+from ..database.database import check_and_read_from_dataset
 from ..utils import create_epochs
-from ..database.database import (check_and_read_from_dataset)
+
 hv.extension('bokeh')
 
 mne.set_log_level("WARNING")
@@ -68,9 +69,9 @@ class PlotPipeline():
         return fig
 
     def plot_sources_and_detections(self, ds: xr.Dataset,
-                                    sel_pipe: str = 'aspire_alphacsc_run_1',
+                                    run: int = 0,
                                     filter_ica: bool = True):
-        def select_detections(ts_for_overlay, sel_pipe,
+        def select_detections(ts_for_overlay, run,
                               detection_property='ica_detection',
                               by='ica_component',
                               name='ica_peak_detection'):
@@ -78,15 +79,13 @@ class PlotPipeline():
             detections = xr.zeros_like(ts_for_overlay)
             detections.name = name
 
-            sel_ica_component = dict(detection_property=by,
-                                     pipeline=sel_pipe)
+            sel_ica_component = dict(detection_property=by, run=run)
             ica_source_ind = ds.detection_properties.loc[sel_ica_component]
             for sens in ds.sensors.values:
                 for ica_comp_ind in ds.ica_component.values:
                     sel_detections = dict(
                         detection_property=detection_property,
-                        pipeline=sel_pipe,
-                        sensors=sens)
+                        run=run, sensors=sens)
                     detections.loc[sens, ica_comp_ind] = (
                         ts_for_overlay.loc[sens, ica_comp_ind] *
                         ds.detection_properties.loc[sel_detections])
@@ -120,22 +119,22 @@ class PlotPipeline():
                     ica_src2.values[i, :])
 
         detections = select_detections(
-            ica_src, sel_pipe, name='ica_peak_detection')
+            ica_src, run, name='ica_peak_detection')
 
         detections_filt = select_detections(
-            ica_src2, sel_pipe, name='ica_peak_detection_filt')
+            ica_src2, run, name='ica_peak_detection_filt')
 
         detections_cleaned = select_detections(
-            ica_src, sel_pipe, detection_property='selected_for_alphacsc',
+            ica_src, run, detection_property='selected_for_alphacsc',
             name='selected_for_alphacsc')
 
         detections_cleaned_filt = select_detections(
-            ica_src2, sel_pipe, detection_property='selected_for_alphacsc',
+            ica_src2, run, detection_property='selected_for_alphacsc',
             name='selected_for_alphacsc_filt')
 
         ds_plot = xr.merge([
             ica_src, ica_src2, detections, detections_filt,
-            ds.detection_properties.sel(pipeline=sel_pipe),
+            ds.detection_properties.sel(run=run),
             detections_cleaned, detections_cleaned_filt])
         ds_plot = ds_plot.interactive().sel(time=time_slider).sel(
             sensors=select_sensors)
@@ -292,8 +291,6 @@ class PlotPipeline():
             evoked.plot_topomap(
                 time, axes=ax, show=False, colorbar=False, contours=0)
         return fig
-
-
 
     def plot_clusters_library(self):
         pass

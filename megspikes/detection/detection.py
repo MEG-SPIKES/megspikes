@@ -425,6 +425,9 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         self.n_times_atom = int(round(self.sfreq * self.atoms_width))
 
     def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
+        assert len(X[0].alphacsc_atom.values) == self.n_atoms, (
+            "Number of atoms in Database and SelectAlphacscEvents "
+            "is not equal.")
         # Prepare subset of full MEG data for fitting
         cropped_raw = self._crop_raw_around_peaks(X[0], X[1])
 
@@ -549,6 +552,9 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
     def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
         assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
             "Wrong sfreq of the fif file or database time coordinate")
+        assert len(X[0].alphacsc_atom.values) == self.n_atoms, (
+            "Number of atoms in Database and SelectAlphacscEvents "
+            "is not equal.")
 
         detections = check_and_read_from_dataset(
             X[0], 'detection_properties',
@@ -829,9 +835,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
         self.max_corr = max_corr
 
     def fit(self, X: Any, y=None):
-        runs_rng = range(1, self.n_aspire_alphacsc_runs + 1)
-        pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
-        pipelines
+        # runs = [0, 1, 2, 3]
         # Estimate goodness threshold
 
         # Estimate v_hat and u_hat correlations

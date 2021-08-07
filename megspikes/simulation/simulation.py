@@ -241,7 +241,7 @@ class Simulation:
         pass
 
 
-def simulate_raw_fast(seconds: int = 2, sampling_freq: int = 200,
+def simulate_raw_fast(seconds: int = 2, sampling_freq: float = 200.,
                       n_channels: int = 306):
     ch_names = [f'MEG{n:03}' for n in range(1, n_channels + 1)]
     ch_types = ['mag', 'grad', 'grad'] * 102
@@ -250,13 +250,13 @@ def simulate_raw_fast(seconds: int = 2, sampling_freq: int = 200,
 
     esfreq = 360
     if sampling_freq < esfreq:
-        data = electrocardiogram()[:seconds*esfreq]
-        data = signal.resample(data, seconds*sampling_freq)
+        data = electrocardiogram()[:int(seconds*esfreq)]
+        data = signal.resample(data, int(seconds*sampling_freq))
         # plt.plot(
         #     np.linspace(0, 2, 2*esfreq), data[:2*esfreq], 'go-',
         #     np.linspace(0, 2, 2*sfreq), data2[:2*sfreq], '.-')
     else:
-        data = electrocardiogram()[:seconds*sampling_freq]
+        data = electrocardiogram()[:int(seconds*sampling_freq)]
 
     raw_data = np.repeat(np.array([data]), n_channels, axis=0)
     noise = np.random.normal(0, .1, raw_data.shape)

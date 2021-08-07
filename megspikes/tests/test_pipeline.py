@@ -2,7 +2,6 @@ import os.path as op
 from pathlib import Path
 
 import pytest
-from megspikes.database.database import Database
 from megspikes.pipeline import aspike_alphacsc_pipeline
 
 
@@ -17,25 +16,20 @@ def fixture_data():
 @pytest.mark.pipeline
 @pytest.mark.happy
 @pytest.mark.slow
-def test_pipeline(simulation):
-    n_ica_components = 3
+def test_pipeline(simulation, dataset):
+    n_ica_components = len(dataset.ica_component)
     n_ica_peaks = 50
-    resample = 200.
-    n_atoms = 2  # FIXME: one atom cause bugs
+    resample = dataset.time.attrs['sfreq']
+    n_atoms = len(dataset.atom)  # FIXME: one atom cause bugs
     z_hat_threshold = 1.
     z_hat_threshold_min = 0.1
 
-    db = Database(n_ica_components=n_ica_components,
-                  n_atoms=n_atoms)
-    case = simulation.case_manager
-    db.read_case_info(case.fif_file, case.fwd['ico5'], resample)
-    ds = db.make_empty_dataset()
-    ds.to_netcdf(case.dataset)  # save empty dataset
+    dataset.to_netcdf(simulation.case_manager.dataset)  # save empty dataset
 
     pipe = aspike_alphacsc_pipeline(
-        case, n_ica_components=n_ica_components, resample=resample,
-        n_ica_peaks=n_ica_peaks, n_atoms=n_atoms,
+        simulation.case_manager, n_ica_components=n_ica_components,
+        resample=resample, n_ica_peaks=n_ica_peaks, n_atoms=n_atoms,
         z_hat_threshold=z_hat_threshold,
         z_hat_threshold_min=z_hat_threshold_min,
-        pipe_names=db.pipelines_names)
+        runs=dataset.run.values)
     _ = pipe.fit_transform(None)

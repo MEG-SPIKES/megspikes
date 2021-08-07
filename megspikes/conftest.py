@@ -2,32 +2,38 @@
 import pytest
 import numpy as np
 from megspikes.simulation.simulation import Simulation, simulate_raw_fast
-from megspikes.database.database import Database
+from megspikes.database.database import read_meg_info_for_database
 
 
 @pytest.fixture(scope="module", name='simulation')
 def run_simulation(test_sample_path):
     test_sample_path.mkdir(exist_ok=True, parents=True)
-
     sim = Simulation(test_sample_path)
     sim.load_mne_dataset()
     sim.simulate_dataset(length=10)
     return sim
 
 
-@pytest.fixture(scope="module", name="db")
-def make_database(simulation):
-    n_ica_comp = 4
-    n_atoms = 3
-    case = simulation.case_manager
-    db = Database(n_atoms=n_atoms, n_ica_components=n_ica_comp)
-    db.read_case_info(case.fif_file, case.fwd['ico5'], sfreq=200.)
-    return db
-
-
 @pytest.fixture(scope="module", name="dataset")
-def make_full_dataset(db):
-    ds = db.make_empty_dataset()
+def prepare_aspire_alphacsc_dataset(simulation):
+    case = simulation.case_manager
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file, case.fwd['ico5'])
+    sfreq = 200.
+    raw = simulation.raw_simulation.resample(sfreq, npad="auto")
+    n_ica_comp = 4
+    n_atoms = 2
+    atom_length = 0.5  # seconds
+    n_runs = 4
+
+    ds = db.make_aspire_alphacsc_dataset(
+        times=raw.times,
+        n_ica_components=n_ica_comp,
+        n_atoms=n_atoms,
+        atom_length=atom_length,
+        n_runs=n_runs,
+        sfreq=sfreq)
+
     for sens in db.sensors:
         selection_ch = ds.attrs[sens]
         selection_sens = dict(sensors=sens)
@@ -45,11 +51,11 @@ def make_full_dataset(db):
         ds['ica_component_properties'].loc[
             selection_sens] = np.random.sample(shape)
 
-        for pipe in db.pipelines_names:
+        for run in ds.run.values:
             selection_pipe_sens = dict(
-                pipeline=pipe, sensors=sens)
+                run=run, sensors=sens)
             selection_pipe_ch = dict(
-                pipeline=pipe, channel=selection_ch)
+                run=run, channel=selection_ch)
 
             shape = ds['ica_component_selection'].loc[
                 selection_pipe_sens].shape
