@@ -8,7 +8,6 @@ import mne
 
 class Database():
     def __init__(self,
-                 times: np.ndarray = np.linspace(0, 10, 2000),
                  n_fwd_sources: int = 20_000,
                  sensors: List[str] = ['grad', 'mag'],
                  channels_by_sensors: Dict[str, np.ndarray] = {
@@ -22,7 +21,6 @@ class Database():
                  n_atoms: int = 3,
                  atom_length: float = 0.5,  # seconds
                  ):
-        self.times = times  # seconds
         self.n_fwd_sources = n_fwd_sources
         self.channels_by_sensors = channels_by_sensors
         self.sensors = sensors
@@ -34,11 +32,12 @@ class Database():
         self.n_aspire_alphacsc_runs = n_aspire_alphacsc_runs
         self.atom_length = atom_length  # ms
 
-    def make_empty_dataset(self) -> xr.Dataset:
+    def make_empty_dataset(self, times: np.ndarray) -> xr.Dataset:
+        # TODO: rename to 'make_empty_aspire_alphacsc_dataset'
         # time coordinate
         sfreq = self.sfreq2
         t = xr.DataArray(
-            data=self.times,
+            data=times,
             dims=("time"),
             attrs={
                 'sfreq': sfreq,
@@ -49,23 +48,24 @@ class Database():
 
         # channels and sensors
         sensors = self.sensors
-        channel_names = self.channel_names
-        channels = np.arange(len(channel_names))
+        channel_names_list = self.channel_names
+        channels = np.arange(len(channel_names_list))
         grad_inx = self.channels_by_sensors['grad']
         mag_inx = self.channels_by_sensors['mag']
 
         # pipeline steps
         runs_rng = range(1, self.n_aspire_alphacsc_runs + 1)
         pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
-        pipelines += ["aspire_alphacsc_clusters_library"]
+        pipelines += ["aspire_alphacsc_atoms_library"]
         pipelines += ["manual"]
         self.pipelines_names = pipelines
 
         # detected evensts properties
         detection_properties = xr.DataArray(
-            data=['detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
+            data=['ica_detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
                   'subcorr', 'selected_for_alphacsc', 'alphacsc_detection',
-                  'alphacsc_atom', 'ica_alphacsc_aligned'],
+                  'alphacsc_atom', 'ica_alphacsc_aligned',
+                  'alphacsc_library_detection', 'alphacsc_library_atom'],
             dims=('detection_property'),
             attrs={
                 'sfreq': sfreq,
@@ -122,14 +122,8 @@ class Database():
                 },
             name='alphacsc_atoms_properties_coords')
 
-        # vertices = np.arange(20_000)  # vert no
-        # sfreq2 = 1000
-        # n_clusters = 5
-        # mne_length = 1
-        # mne_times = np.linspace(0, 1, mne_length*sfreq)
-
         channel_names = xr.DataArray(
-            data=channel_names,
+            data=channel_names_list,
             dims=("channel"),
             coords={"channel": channels},
             attrs={
@@ -259,10 +253,6 @@ class Database():
             },
             name="alphacsc_atoms_properties")
 
-        # stc_clusters_library = xr.DataArray(
-        #     data=np.zeros((len(vertices), n_alphacsc_atoms, len(mne_times))),
-        # )
-
         ds = xr.merge([
             channel_names,
             ica_sources,
@@ -274,6 +264,119 @@ class Database():
             alphacsc_v_hat,
             alphacsc_u_hat,
             alphacsc_atoms_properties
+            ])
+        return ds
+
+    def make_clusters_dataset(self, times: np.ndarray, n_clusters: int,
+                              evoked_length: int):
+        sfreq = self.sfreq1
+        cluster = xr.DataArray(
+            data=np.arange(n_clusters),
+            dims=("cluster"),
+            name='cluster')
+
+        time = xr.DataArray(
+            data=times,
+            dims=("time"),
+            attrs={
+                'sfreq': sfreq,
+                # 'units': 'seconds'
+            },
+            name='time')
+
+        time_evoked = xr.DataArray(
+            data=np.linspace(0, evoked_length, int(evoked_length * sfreq)),
+            dims=("time_evoked"),
+            attrs={
+                'sfreq': sfreq,
+                # 'units': 'seconds'
+            },
+            name='time_evoked')
+
+        source = xr.DataArray(
+            data=np.arange(self.n_fwd_sources),
+            dims=("vertex"),
+            attrs={
+                'lh_vertno': self.fwd_sources_no[0],
+                'rh_vertno': self.fwd_sources_no[1],
+            },
+            name='source')
+
+        # channels
+        channel_names_list = self.channel_names
+        channels = np.arange(len(channel_names_list))
+        grad_inx = self.channels_by_sensors['grad']
+        mag_inx = self.channels_by_sensors['mag']
+
+        detection_property_coords = xr.DataArray(
+            data=['detection', 'cluster'],
+            dims=('detection_property'),
+            attrs={},
+            name='detection_property')
+
+        cluster_property_coords = xr.DataArray(
+            data=['sensors', 'pipeline_type', 'n_events', 'time_baseline',
+                  'time_slope', 'time_peak'],
+            dims=('cluster_property'),
+            name='cluster_property')
+
+        channel_names = xr.DataArray(
+            data=channel_names_list,
+            dims=("channel"),
+            coords={"channel": channels},
+            attrs={
+                'grad': grad_inx,
+                'mag': mag_inx,
+            },
+            name="channel_names")
+
+        spike = xr.DataArray(
+            data=np.zeros((len(times), len(detection_property_coords))),
+            dims=("time", "detection_property"),
+            coords={
+                "time": time,
+                "detection_property": detection_property_coords
+                },
+            attrs={
+                'sfreq': sfreq,
+            },
+            name="spike")
+
+        cluster_properties = xr.DataArray(
+            data=np.zeros((len(times), len(detection_property_coords))),
+            dims=("cluster", "cluster_property"),
+            coords={
+                "cluster": cluster,
+                "cluster_property": cluster_property_coords
+                },
+            name="cluster_properties")
+
+        mne_localization = xr.DataArray(
+            data=np.zeros((n_clusters, len(source), len(time_evoked))),
+            dims=("cluster", "source", "time_evoked"),
+            coords={
+                "cluster": cluster,
+                "source": source,
+                "time_evoked": time_evoked
+                },
+            name="mne_localization")
+
+        evoked = xr.DataArray(
+            data=np.zeros((n_clusters, len(channels), len(time_evoked))),
+            dims=("cluster", "channel", "time_evoked"),
+            coords={
+                "cluster": cluster,
+                "channel": channels,
+                "time_evoked": time_evoked
+                },
+            name="evoked")
+
+        ds = xr.merge([
+            channel_names,
+            spike,
+            cluster_properties,
+            mne_localization,
+            evoked,
             ])
         return ds
 
@@ -294,6 +397,8 @@ class Database():
         # length of the MEG recording in seconds
         self.times = fif_file.times
         self.n_fwd_sources = sum([len(h['vertno']) for h in fwd['src']])
+        # first: left hemi, second: right hemi
+        self.fwd_sources_no = [['vertno'] for h in fwd['src']]
         del fif_file, fwd
 
     def select_sensors(self, ds: xr.Dataset, sensors: str,

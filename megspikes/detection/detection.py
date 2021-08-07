@@ -253,7 +253,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         check_and_write_to_dataset(
             X[0], 'detection_properties',
             detections,
-            dict(detection_property='detection'))
+            dict(detection_property='ica_detection'))
         check_and_write_to_dataset(
             X[0], 'detection_properties',
             ica_index,
@@ -353,7 +353,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         detection = check_and_read_from_dataset(
             X[0], 'detection_properties',
-            dict(detection_property='detection'))
+            dict(detection_property='ica_detection'))
         detection_mask = detection > 0
         # samples
         timestamps = np.where(detection_mask)[0]
@@ -812,7 +812,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
         return (cond1 + cond2 + cond3) / 3
 
 
-class ClustersMerging(TransformerMixin, BaseEstimator):
+class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
     """ Merge atoms from all runs into one atom's library:
         - Estimate atom's goodness threshold. Goodness represents
             cross-correlation of events inside the atom, number of
@@ -829,6 +829,15 @@ class ClustersMerging(TransformerMixin, BaseEstimator):
         self.max_corr = max_corr
 
     def fit(self, X: Any, y=None):
+        runs_rng = range(1, self.n_aspire_alphacsc_runs + 1)
+        pipelines = [f"aspire_alphacsc_run_{i}" for i in runs_rng]
+        pipelines
+        # Estimate goodness threshold
+
+        # Estimate v_hat and u_hat correlations
+        return self
+
+    def transform(self, X) -> xr.Dataset:
         X = xr.load_dataset(self.dataset)
         goodness_threshold = self._find_goodness_threshold(X)
 
@@ -910,9 +919,6 @@ class ClustersMerging(TransformerMixin, BaseEstimator):
         X["clusters_library_cluster_id"][:n_det] = atoms_lib_cluster_id[:n_det]
         X.to_netcdf(self.dataset, mode='a', format="NETCDF4",
                     engine="netcdf4")
-        return self
-
-    def transform(self, X) -> xr.Dataset:
         return xr.load_dataset(self.dataset)
 
     def _find_goodness_threshold(self, ds):

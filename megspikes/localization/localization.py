@@ -202,7 +202,7 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         detection = check_and_read_from_dataset(
             X[0], 'detection_properties',
-            dict(detection_property='detection'))
+            dict(detection_property='ica_detection'))
         # samples
         timestamps = np.where(detection > 0)[0]
 

@@ -71,7 +71,7 @@ class PlotPipeline():
                                     sel_pipe: str = 'aspire_alphacsc_run_1',
                                     filter_ica: bool = True):
         def select_detections(ts_for_overlay, sel_pipe,
-                              detection_property='detection',
+                              detection_property='ica_detection',
                               by='ica_component',
                               name='ica_peak_detection'):
 
