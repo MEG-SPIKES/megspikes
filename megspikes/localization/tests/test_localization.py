@@ -1,16 +1,15 @@
 import os.path as op
 from pathlib import Path
 
+import mne
 import numpy as np
 import pytest
-from mne.beamformer import rap_music
-import mne
 from megspikes.database.database import select_sensors
-from megspikes.localization.localization import (ClustersLocalization,
-                                                 ICAComponentsLocalization,
-                                                 PeakLocalization,
-                                                 PredictIZClusters)
+from megspikes.localization.localization import (
+    AlphaCSCComponentsLocalization, ClustersLocalization,
+    ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
 from megspikes.utils import PrepareData
+from mne.beamformer import rap_music
 
 
 @pytest.fixture(scope="module", name="test_sample_path")
@@ -30,7 +29,9 @@ def test_components_localization(dataset, simulation):
     (ds_grad, raw) = prep_data.fit_transform(
         (ds_grad, simulation.raw_simulation))
     cl = ICAComponentsLocalization(case=case, sensors=sensors)
+    alphacl = AlphaCSCComponentsLocalization(case=case, sensors=sensors)
     (ds_grad, raw) = cl.fit_transform((ds_grad, raw))
+    (ds_grad, raw) = alphacl.fit_transform((ds_grad, raw))
 
 
 @pytest.mark.xfail

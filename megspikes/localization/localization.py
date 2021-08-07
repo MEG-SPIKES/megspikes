@@ -153,8 +153,7 @@ class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         # read from database ica components
-        components = check_and_read_from_dataset(
-            X[0], 'ica_components')
+        components = check_and_read_from_dataset(X[0], 'ica_components')
         components = components.T
         # create EvokedArray
         evoked = mne.EvokedArray(components, self.info)
@@ -368,24 +367,35 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
 
 class AlphaCSCComponentsLocalization(Localization, BaseEstimator,
                                      TransformerMixin):
-    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
-        self.setup_fwd(case, sensors)
+    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        components = X[0]['alphacsc_u_hat'].values[:, :self.n_channels].T
-        evoked = mne.EvokedArray(components, self.info)
-        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
-
-        for n, d in enumerate(dip):
-            pos_mni = mne.head_to_mni(
-                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
-                subjects_dir=self.freesurfer_dir)
-            X[0]['alphacsc_components_localization'][n, :] = pos_mni
-            X[0]['alphacsc_components_gof'][n] = d.gof[0]
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        logging.info("ICA components are localized.")
+        components = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        components = components.T
+        evoked = mne.EvokedArray(components, self.info)
+        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
+
+        locs = np.zeros((len(dip), 3))
+        gof = np.zeros(len(dip))
+        for n, d in enumerate(dip):
+            locs[n, :] = mne.head_to_mni(
+                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
+                subjects_dir=self.freesurfer_dir)
+            gof[n] = d.gof[0]
+
+        check_and_write_to_dataset(
+            X[0], 'alphacsc_atoms_properties', locs,
+            dict(alphacsc_atom_property=['mni_x', 'mni_y', 'mni_z']))
+        check_and_write_to_dataset(
+            X[0], 'alphacsc_atoms_properties', gof,
+            dict(alphacsc_atom_property='gof'))
+        logging.info("AlphaCSC components are localized.")
         return X
 
 
