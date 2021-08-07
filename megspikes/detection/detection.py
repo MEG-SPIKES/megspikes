@@ -851,11 +851,12 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
             X[0], 'detection_properties',
             dict(detection_property='alphacsc_atom'))
         alphacsc_detections = check_and_read_from_dataset(
-            X[0], 'alphacsc_detection',
+            X[0], 'detection_properties',
             dict(detection_property='alphacsc_detection'))
         v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
         u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
-        spikes, spike_clusters, spike_sensors, spike_runs = self.select_atoms(
+        (spikes, spike_clusters, spike_sensors,
+         spike_runs, selected) = self.select_atoms(
             alphacsc_detections, alphacsc_atoms, goodness, v_hat, u_hat,
             self.runs, self.n_atoms, [X[0].attrs['grad'], X[0].attrs['mag']])
         self.spikes = spikes
@@ -905,6 +906,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
         spike_clusters = np.zeros(max(detections.shape))
         spike_sensors = np.zeros(max(detections.shape))
         spike_runs = np.zeros(max(detections.shape))
+        selected = np.zeros_like(goodness)
 
         goodness_threshold = self._find_goodness_threshold(
             goodness.flatten())
@@ -922,6 +924,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
                     cond2 = self._atoms_corrs_condition(
                         u_atom, v_atom, all_u, all_v)
                     if cond1 & cond2:
+                        selected[run, sens, atom] = 1
                         detection_mask = ((detections[run, sens] > 0) &
                                           (atoms[run, sens] == atom))
                         spikes[detection_mask] = 1
@@ -932,7 +935,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
                         all_v.append(v_atom)
                         cluster_id += 1
 
-        return spikes, spike_clusters, spike_sensors, spike_runs
+        return spikes, spike_clusters, spike_sensors, spike_runs, selected
 
     def _find_goodness_threshold(self, goodness):
         # Atoms' goodness

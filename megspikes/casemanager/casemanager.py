@@ -30,6 +30,7 @@ class CaseManager():
         # Read case info (Excel)
         self.read_case_info()
         self.dataset = self.case_meg / f"{case}_alphacsc_results.nc"
+        self.cluster_dataset = self.case_meg / f"{case}_cluster_results.nc"
 
     def read_case_info(self):
         case = self.case

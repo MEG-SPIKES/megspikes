@@ -96,7 +96,7 @@ class Database():
         atom_length = int(atom_length * sfreq)
         atom_v_times = np.linspace(0, atom_length, atom_length)
         alphacsc_atoms_properties_coords = xr.DataArray(
-            data=['mni_x', 'mni_y', 'mni_z', 'gof', 'goodness'],
+            data=['mni_x', 'mni_y', 'mni_z', 'gof', 'goodness', 'selected'],
             dims=('alphacsc_atom_property'),
             attrs={
                 'mni_x_units': 'mm',
@@ -105,7 +105,8 @@ class Database():
                 'gof': ('The measurement of the dipole fitting quality.'
                         'Larger values correspond to the better solution'),
                 'gof_units': 'percentage between [0, 100]',
-                'goodness': 'comprehensive assessment atoms quality'
+                'goodness': 'comprehensive assessment atoms quality',
+                'selected': 'Atoms selected for clusters library'
                 },
             name='alphacsc_atoms_properties_coords')
 
@@ -308,8 +309,8 @@ class Database():
             name='detection_property')
 
         cluster_property_coords = xr.DataArray(
-            data=['sensors', 'pipeline_type', 'n_events', 'time_baseline',
-                  'time_slope', 'time_peak'],
+            data=['sensors', 'run', 'pipeline_type', 'n_events',
+                  'time_baseline', 'time_slope', 'time_peak'],
             dims=('cluster_property'),
             name='cluster_property')
 

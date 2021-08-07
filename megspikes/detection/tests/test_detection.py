@@ -9,7 +9,8 @@ from megspikes.detection.detection import (DecompositionICA,
                                            PeakDetection,
                                            CleanDetections,
                                            DecompositionAlphaCSC,
-                                           SelectAlphacscEvents)
+                                           SelectAlphacscEvents,
+                                           AspireAlphacscRunsMerging)
 from megspikes.utils import PrepareData
 
 
@@ -29,7 +30,9 @@ def spikes_waveforms():
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_ica_decomposition(dataset, simulation, sensors):
+def test_ica_decomposition(aspire_alphacsc_random_dataset,
+                           simulation, sensors):
+    dataset = aspire_alphacsc_random_dataset
     run = 0
     n_ica_comp = len(dataset.ica_component)
     _, sel = select_sensors(dataset, 'grad', run)
@@ -56,7 +59,9 @@ def test_ica_decomposition(dataset, simulation, sensors):
     "gof,kurtosis,sel_comp,run",
     [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0),
      ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 1)])
-def test_components_selection(dataset, sensors, gof, kurtosis, sel_comp, run):
+def test_components_selection(aspire_alphacsc_random_dataset, sensors, gof,
+                              kurtosis, sel_comp, run):
+    dataset = aspire_alphacsc_random_dataset
     dataset["ica_component_properties"].loc[
         dict(sensors=sensors, ica_component_property="gof")
         ] = np.array(gof)
@@ -85,7 +90,8 @@ def test_components_selection_detailed(run, n_runs, n_components):
 
 
 @pytest.mark.happy
-def test_peaks_detection(dataset):
+def test_peaks_detection(aspire_alphacsc_random_dataset):
+    dataset = aspire_alphacsc_random_dataset
     dataset['ica_component_selection'] *= 0
     dataset['ica_component_selection'] += 1
     ds_grad, _ = select_sensors(dataset, 'grad', 0)
@@ -139,7 +145,9 @@ def test_detection_cleaning_details(times, subcorr, selection,
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_alphacsc_decomposition(simulation, dataset, sensors):
+def test_alphacsc_decomposition(simulation, aspire_alphacsc_random_dataset,
+                                sensors):
+    dataset = aspire_alphacsc_random_dataset
     run = 0
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
@@ -157,7 +165,9 @@ def test_alphacsc_decomposition(simulation, dataset, sensors):
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_alphacsc_events_selection(dataset, simulation, sensors):
+def test_alphacsc_events_selection(aspire_alphacsc_random_dataset, simulation,
+                                   sensors):
+    dataset = aspire_alphacsc_random_dataset
     run = 0
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
@@ -185,3 +195,17 @@ def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
     detection, _ = alpha_select._find_max_z(
         np.array(z_hat), np.array(ica_peaks), 1)
     assert sum(detection) == n_detections
+
+
+@pytest.mark.happy
+def test_atoms_selection(simulation, aspire_alphacsc_random_dataset,
+                         clusters_empty_dataset):
+    dataset = aspire_alphacsc_random_dataset
+    merging = AspireAlphacscRunsMerging(
+        simulation.case_manager.dataset,
+        simulation.case_manager.cluster_dataset,
+        runs=[int(i) for i in dataset.run.values],
+        n_atoms=len(dataset.alphacsc_atom.values))
+    clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
+    cluster_dataset = merging.fit_transform(None)
+    del cluster_dataset

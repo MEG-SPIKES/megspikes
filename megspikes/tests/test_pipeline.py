@@ -16,7 +16,8 @@ def fixture_data():
 @pytest.mark.pipeline
 @pytest.mark.happy
 @pytest.mark.slow
-def test_pipeline(simulation, dataset):
+def test_aspire_alphacsc_pipeline(simulation, aspire_alphacsc_random_dataset):
+    dataset = aspire_alphacsc_random_dataset
     n_ica_components = len(dataset.ica_component)
     n_ica_peaks = 50
     resample = dataset.time.attrs['sfreq']

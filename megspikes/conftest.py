@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 from megspikes.simulation.simulation import Simulation, simulate_raw_fast
@@ -14,8 +13,8 @@ def run_simulation(test_sample_path):
     return sim
 
 
-@pytest.fixture(scope="module", name="dataset")
-def prepare_aspire_alphacsc_dataset(simulation):
+@pytest.fixture(scope="module", name="aspire_alphacsc_random_dataset")
+def prepare_aspire_alphacsc_random_dataset(simulation):
     case = simulation.case_manager
     db = read_meg_info_for_database(
         simulation.case_manager.fif_file, case.fwd['ico5'])
@@ -87,4 +86,42 @@ def prepare_aspire_alphacsc_dataset(simulation):
             shape = ds['alphacsc_u_hat'].loc[selection_pipe_ch].shape
             ds['alphacsc_u_hat'].loc[
                 selection_pipe_ch] = np.random.sample(shape)
+    ds.to_netcdf(simulation.case_manager.dataset)
+    return ds
+
+
+@pytest.fixture(scope="module", name="aspire_alphacsc_empty_dataset")
+def prepare_aspire_alphacsc_empty_dataset(simulation):
+    case = simulation.case_manager
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file, case.fwd['ico5'])
+    sfreq = 200.
+    raw = simulation.raw_simulation.resample(sfreq, npad="auto")
+    n_ica_comp = 4
+    n_atoms = 2
+    atom_length = 0.5  # seconds
+    n_runs = 4
+
+    ds = db.make_aspire_alphacsc_dataset(
+        times=raw.times,
+        n_ica_components=n_ica_comp,
+        n_atoms=n_atoms,
+        atom_length=atom_length,
+        n_runs=n_runs,
+        sfreq=sfreq)
+    return ds
+
+
+@pytest.fixture(scope="module", name="clusters_empty_dataset")
+def prepare_clusters_empty_dataset(simulation):
+    case = simulation.case_manager
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file, case.fwd['ico5'])
+    raw = simulation.raw_simulation
+    n_clusters = 5
+    ds = db.make_clusters_dataset(
+        times=raw.times,
+        n_clusters=n_clusters,
+        evoked_length=1.,  # second
+        sfreq=1000.)
     return ds
