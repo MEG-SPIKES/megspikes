@@ -16,8 +16,9 @@ def fixture_data():
 @pytest.mark.pipeline
 @pytest.mark.happy
 @pytest.mark.slow
-def test_aspire_alphacsc_pipeline(simulation, aspire_alphacsc_random_dataset):
-    dataset = aspire_alphacsc_random_dataset
+def test_aspire_alphacsc_pipeline(simulation, aspire_alphacsc_empty_dataset,
+                                  clusters_empty_dataset):
+    dataset = aspire_alphacsc_empty_dataset
     n_ica_components = len(dataset.ica_component)
     n_ica_peaks = 50
     resample = dataset.time.attrs['sfreq']
@@ -26,6 +27,7 @@ def test_aspire_alphacsc_pipeline(simulation, aspire_alphacsc_random_dataset):
     z_hat_threshold_min = 0.1
 
     dataset.to_netcdf(simulation.case_manager.dataset)  # save empty dataset
+    clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
 
     pipe = aspike_alphacsc_pipeline(
         simulation.case_manager, n_ica_components=n_ica_components,

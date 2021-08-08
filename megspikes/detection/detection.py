@@ -842,28 +842,32 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
 
     def fit(self, X: Any, y=None):
         # assert X[0].name == 'aspire_alphacsc_dataset'
-        ds = xr.load_dataset(self.detection_dataset)
-        X = (ds, None)
+        X = xr.load_dataset(self.detection_dataset)
         goodness = check_and_read_from_dataset(
-            X[0], 'alphacsc_atoms_properties',
+            X, 'alphacsc_atoms_properties',
             dict(alphacsc_atom_property='goodness'))
         alphacsc_atoms = check_and_read_from_dataset(
-            X[0], 'detection_properties',
+            X, 'detection_properties',
             dict(detection_property='alphacsc_atom'))
         alphacsc_detections = check_and_read_from_dataset(
-            X[0], 'detection_properties',
+            X, 'detection_properties',
             dict(detection_property='alphacsc_detection'))
-        v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
-        u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        v_hat = check_and_read_from_dataset(X, 'alphacsc_v_hat')
+        u_hat = check_and_read_from_dataset(X, 'alphacsc_u_hat')
         (spikes, spike_clusters, spike_sensors,
          spike_runs, selected) = self.select_atoms(
             alphacsc_detections, alphacsc_atoms, goodness, v_hat, u_hat,
-            self.runs, self.n_atoms, [X[0].attrs['grad'], X[0].attrs['mag']])
+            self.runs, self.n_atoms, [X.attrs['grad'], X.attrs['mag']])
         self.spikes = spikes
         self.spike_clusters = spike_clusters
         self.spike_sensors = spike_sensors
         self.spike_runs = spike_runs
-        self.detection_sfreq = X[0].time.attrs['sfreq']
+        self.detection_sfreq = X.time.attrs['sfreq']
+        check_and_write_to_dataset(
+            X, 'alphacsc_atoms_properties', selected,
+            dict(alphacsc_atom_property='selected'))
+        X.to_netcdf(self.detection_dataset, mode='a', format="NETCDF4",
+                    engine="netcdf4")
         return self
 
     def transform(self, X) -> xr.Dataset:

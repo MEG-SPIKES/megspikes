@@ -19,7 +19,7 @@ def prepare_aspire_alphacsc_random_dataset(simulation):
     db = read_meg_info_for_database(
         simulation.case_manager.fif_file, case.fwd['ico5'])
     sfreq = 200.
-    raw = simulation.raw_simulation.resample(sfreq, npad="auto")
+    raw = simulation.raw_simulation.copy().resample(sfreq, npad="auto")
     n_ica_comp = 4
     n_atoms = 2
     atom_length = 0.5  # seconds

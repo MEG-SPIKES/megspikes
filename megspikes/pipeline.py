@@ -9,7 +9,8 @@ from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            DecompositionAlphaCSC,
                                            DecompositionICA, PeakDetection,
-                                           SelectAlphacscEvents)
+                                           SelectAlphacscEvents,
+                                           AspireAlphacscRunsMerging)
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ClustersLocalization,
     ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
@@ -78,14 +79,16 @@ def aspike_alphacsc_pipeline(case: CaseManager,
                 ('components_localization',
                  ICAComponentsLocalization(case=case, sensors=sens)),
                 ('save_dataset',
-                    SaveDataset(dataset=case.dataset, sensors=sens,
-                                run=run)),
+                    SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                 ('spikes_detection', FeatureUnion(pipe_runs))
                 ])))
         pipe_runs = []
     pipe = Pipeline([
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),
-        # ('make_clusters_library', ClustersMerging(dataset=case.dataset)),
+        ('make_clusters_library', AspireAlphacscRunsMerging(
+            detection_dataset=case.dataset,
+            clusters_dataset=case.cluster_dataset,
+            runs=runs, n_atoms=n_atoms)),
         # ('prepare_data', PrepareData(data_file=case.fif_file, sensors=True)),
         # ('localize_clusters', ClustersLocalization(
         #     case=case,
