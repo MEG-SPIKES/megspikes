@@ -125,3 +125,29 @@ def prepare_clusters_empty_dataset(simulation):
         evoked_length=1.,  # second
         sfreq=1000.)
     return ds
+
+
+@pytest.fixture(scope="module", name="clusters_random_dataset")
+def prepare_clusters_random_dataset(simulation):
+    case = simulation.case_manager
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file, case.fwd['ico5'])
+    raw = simulation.raw_simulation
+    n_clusters = 2
+    ds = db.make_clusters_dataset(
+        times=raw.times,
+        n_clusters=n_clusters,
+        evoked_length=1.,  # second
+        sfreq=1000.)
+    true_spike_peaks = np.int32(simulation.spikes)
+    clusters = np.zeros_like(true_spike_peaks)
+    clusters[4:] = 1
+    ds.spike.loc[dict(detection_property='detection')][true_spike_peaks] = 1
+    ds.spike.loc[dict(detection_property='cluster')][
+        true_spike_peaks] = clusters
+    ds.spike.loc[dict(detection_property='sensor')][
+        true_spike_peaks] = clusters
+
+    ds.cluster_properties.loc[dict(cluster_property='cluster_id')] = [0, 1]
+    ds.cluster_properties.loc[dict(cluster_property='sensors')] = [0, 1]
+    return ds

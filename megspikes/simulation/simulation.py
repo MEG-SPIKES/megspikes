@@ -86,6 +86,7 @@ class Simulation:
         n_sources = self.n_sources
         events = np.zeros((n_events * n_sources, 3))
         events[:, 0] = 1000 * np.arange(n_events * n_sources)
+        self.spikes = events[:, 0]
         events[:, 2] = sum([[n+1]*n_events for n in range(n_sources)], [])
         event_id = {
             'spike_shape_1': 1,
@@ -141,8 +142,7 @@ class Simulation:
         self.activations = activations
 
     def _add_annotation(self):
-        spikes = np.array(np.arange(self.n_events*self.n_sources),
-                          dtype=np.float64)
+        spikes = np.float64(self.spikes)
         all_peaks = self.peak_times[:self.n_sources]
         spikes += np.array(
             [[i]*self.n_events for i in all_peaks]).flatten()

@@ -29,19 +29,22 @@ class Localization():
         self.sensors = sensors
         self.case = case
         self.case_name = case.case
-        self.info = case.info
-        self.info = mne.pick_info(
-            case.info, mne.pick_types(case.info, meg=self.sensors))
-        self.n_channels = len(mne.pick_types(self.info, meg=True))
-
-        self.fwd = case.fwd[spacing]
-        if isinstance(self.sensors, str):
-            self.fwd = mne.pick_types_forward(self.fwd, meg=self.sensors)
-
         self.bem = case.bem[spacing]
         self.trans = case.trans[spacing]
         self.freesurfer_dir = case.freesurfer_dir
-        self.cov = mne.make_ad_hoc_cov(self.info)
+        self.info = case.info
+        self.info, self.fwd, self.cov = self.pick_sensors(
+            case.info, case.fwd[spacing], sensors)
+
+    def pick_sensors(self, info: mne.Info, fwd: mne.Forward,
+                     sensors: Union[str, bool] = True):
+        info_ = mne.pick_info(info, mne.pick_types(info, meg=sensors))
+        if isinstance(sensors, str):
+            fwd_ = mne.pick_types_forward(fwd, meg=sensors)
+        else:
+            fwd_ = fwd
+        cov = mne.make_ad_hoc_cov(info_)
+        return info_, fwd_, cov
 
     def make_labels_ts(self, stc: mne.SourceEstimate,
                        inverse_operator: mne.minimum_norm.InverseOperator,
@@ -184,7 +187,7 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
     Parameters
     ----------
     sfreq : int, optional
-        downsample freq, by default 1000.
+        downsample freq, by default 200.
     window : list, optional
         MUSIC window, by default [-20, 30]
     """
@@ -401,122 +404,94 @@ class AlphaCSCComponentsLocalization(Localization, BaseEstimator,
 
 class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager,
-                 db_name_detections: str,
-                 db_name_clusters: str,
-                 detection_sfreq: float = 200.,
-                 sensors: Union[str, bool] = True,
                  inv_method: str = 'MNE',
-                 epochs_window: Tuple[float] = (-0.5, 0.5)):
-        self.setup_fwd(case, sensors)
-        self.detection_sfreq = detection_sfreq
-        self.db_name_detections = db_name_detections
-        self.db_name_clusters = db_name_clusters
+                 epochs_window: Tuple[float] = (-0.5, 0.5),
+                 spacing='ico5'):
+        self.setup_fwd(case, sensors=True, spacing=spacing)
         self.inv_method = inv_method
         self.epochs_window = epochs_window
+        self.spacing = spacing
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self.inverse_operator = make_inverse_operator(
-            self.info, self.fwd, self.cov, depth=None, fixed=False)
-        timestamps = X[0][self.db_name_detections].values
-        clusters = X[0][self.db_name_clusters].values
-        non_zero = timestamps != 0
-        timestamps = timestamps[non_zero]
-        clusters = clusters[non_zero]
-
-        # resample timestamps
-        timestamps = self.resample_timestamps(
-            timestamps, self.detection_sfreq, X[1].info['sfreq'])
-
-        epochs_width = (np.abs(self.epochs_window[0]) +
-                        np.abs(self.epochs_window[1])) * X[1].info['sfreq']
-        epochs_width = np.int32(epochs_width)
-        epochs_times = np.linspace(
-                    self.epochs_window[0], self.epochs_window[1], epochs_width)
-        channels = mne.pick_types(X[1].info, meg=True)
-        n_clusters = len(np.unique(clusters))
-        all_clusters = np.int32(np.unique(clusters))
-        array_shape = (n_clusters, len(channels), len(epochs_times))
-        clusters_lib_evoked = xr.DataArray(
-            np.zeros(array_shape),
-            dims=("cluster_id", "meg_channels", "cluster_lib_times"),
-            coords={
-                "cluster_id": all_clusters,
-                "meg_channels": channels,
-                "cluster_lib_times": epochs_times},
-            name="clusters_lib_evoked")
-
-        fwd_vertno = np.hstack([h['vertno'] for h in self.fwd['src']])
-        array_shape = (n_clusters, len(fwd_vertno), len(epochs_times))
-        clusters_lib_sources = xr.DataArray(
-            np.zeros(array_shape),
-            dims=("cluster_id", "fwd_vertno", "cluster_lib_times"),
-            coords={
-                "cluster_id": all_clusters,
-                "fwd_vertno": fwd_vertno,
-                "cluster_lib_times": epochs_times},
-            name="clusters_lib_sources")
-
-        clusters_lib_slope_timepoints = xr.DataArray(
-            np.zeros((n_clusters, 3)),
-            dims=("cluster_id", "spike_slope_timepoints"),
-            coords={
-                "cluster_id": all_clusters,
-                "spike_slope_timepoints": ['baseline', 'slope', 'peak']
-                },
-            name="clusters_lib_slope_timepoints")
-
-        for cluster in all_clusters:
-            # select timestamps for the cluster
-            times = timestamps[clusters == cluster]
-            # add first sample
-            times += X[1].first_samp
-            # Create epochs for the cluster
-            epochs = create_epochs(
-                X[1], times, tmin=self.epochs_window[0],
-                tmax=self.epochs_window[1])
-            # Create Evoked
-            evoked = epochs.average()
-            clusters_lib_evoked.loc[
-                cluster, :, :] = evoked.data[:, :epochs_width]
-
-            # minimum norm
-            stc, label_ts = self.minimum_norm(evoked)
-
-            clusters_lib_sources.loc[
-                cluster, :, :] = stc.data[:, :epochs_width]
-
-            # Slope components
-            # t1 - slope (20%), t2 - slope (50%), t3 - peak
-            slope_times = onset_slope_timepoints(
-                label_ts[0].mean(axis=0))
-
-            # Update final atoms table for ROC and AtomViewer
-            clusters_lib_slope_timepoints.loc[
-                cluster, :] = slope_times
-
-        X[0]['clusters_lib_evoked'] = clusters_lib_evoked
-        X[0]['clusters_lib_sources'] = clusters_lib_sources
-        X[0]['clusters_lib_slope_timepoints'] = clusters_lib_slope_timepoints
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
+            "Wrong sfreq of the fif file or database time coordinate")
+        spikes = check_and_read_from_dataset(
+            X[0], 'spike', dict(detection_property='detection'))
+        detection_mask = spikes > 0
+        clusters = check_and_read_from_dataset(
+            X[0], 'spike', dict(detection_property='cluster'))
+        sensors = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property='sensors'))
+
+        all_clusters = np.int32(np.unique(clusters[detection_mask]))
+        clusters_properties = np.zeros((len(all_clusters), 3))
+        n_times = len(X[0].time_evoked.values)
+
+        evokeds = []
+        for cluster in all_clusters:
+            evoked = self.average_cluster(
+                X[1], detection_mask, clusters, cluster)
+            check_and_write_to_dataset(
+                X[0], 'evoked', evoked.data[:, :n_times],
+                dict(cluster=cluster))
+            evokeds.append(evoked)
+
+        inverse_operator = {}
+        for sensor_ind in np.unique(sensors):
+            sensor_type = 'grad' if sensor_ind == 0 else 'mag'
+            assert sensor_type in X[0].sensors.values, (
+                f"Sensors with the type {sensor_type} are not in the sensors"
+                f"coordinates ({X[0].sensors.values}) in the database.")
+            info, fwd, cov = self.pick_sensors(
+                self.info, self.fwd, sensor_type)
+            inverse_operator[sensor_type] = make_inverse_operator(
+                info, fwd, cov, depth=None, fixed=False)
+
+            for n, cluster in enumerate(all_clusters):
+                evoked_sens = evokeds[n].copy().pick_types(meg=sensor_type)
+                # minimum norm
+                stc, label_ts = self.minimum_norm(
+                    evoked_sens, inverse_operator[sensor_type])
+                check_and_write_to_dataset(
+                    X[0], 'mne_localization', stc.data[:, :n_times],
+                    dict(sensors=sensor_type, cluster=cluster))
+                if sensors[n] == sensor_ind:
+                    clusters_properties[n, :] = onset_slope_timepoints(
+                        label_ts[0].mean(axis=0))
+
+        check_and_write_to_dataset(
+            X[0], 'cluster_properties', clusters_properties, dict(
+                cluster_property=['time_baseline', 'time_slope', 'time_peak']))
         logging.info("Clusters are localized.")
         return X
 
     def minimum_norm(self, evoked: Union[mne.Evoked, mne.EvokedArray],
+                     inverse_operator: mne.minimum_norm.InverseOperator,
                      inv_method: str = 'MNE') -> Tuple[
                          mne.SourceEstimate, np.ndarray]:
         snr = 3.0
         lambda2 = 1.0 / snr ** 2
         stc = apply_inverse(
-            evoked, self.inverse_operator, lambda2, inv_method, pick_ori=None)
-        label_ts = self.make_labels_ts(stc, self.inverse_operator)
+            evoked, inverse_operator, lambda2, inv_method, pick_ori=None)
+        label_ts = self.make_labels_ts(stc, inverse_operator)
         return stc, label_ts
 
-    def resample_timestamps(self, timestamps: np.ndarray,
-                            from_sfreq: float = 200.,
-                            to_sfreq: float = 1000.) -> np.ndarray:
-        return (timestamps / from_sfreq) * to_sfreq
+    def average_cluster(self, meg_data: mne.io.Raw, detection_mask: np.ndarray,
+                        clusters: np.ndarray, cluster: int) -> mne.Evoked:
+        # select timestamps for the cluster
+        cluster_mask = detection_mask & (clusters == cluster)
+        times = np.where(cluster_mask)[0]
+        # add first sample
+        times += meg_data.first_samp
+        # Create epochs for the cluster
+        epochs = create_epochs(
+            meg_data, times, tmin=self.epochs_window[0],
+            tmax=self.epochs_window[1])
+        # Create Evoked
+        return epochs.average()
 
 
 class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):

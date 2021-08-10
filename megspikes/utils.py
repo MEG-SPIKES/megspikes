@@ -147,6 +147,10 @@ def onset_slope_timepoints(label_ts: np.ndarray,
                            peaks_rel_hight: float = 0.6
                            ) -> np.ndarray:
     """ Find the peak of the spike, 50% and 20% of the slope.
+        Slope components:
+            t1 - baseline (20% of the slope)
+            t2 - slope (50%)
+            t3 - peak
     """
     # Smooth lables timeseries
     slope = gaussian_filter(label_ts, sigma=sigma)

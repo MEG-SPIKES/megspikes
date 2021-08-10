@@ -26,10 +26,17 @@ def sample_path():
     [('mag', 'oct5', 102, 1884),
      ('grad', 'oct5', 204, 1884),
      ('mag', 'ico5', 102, 18_840),
-     ('grad', 'ico5', 204, 18_840)])
+     ('grad', 'ico5', 204, 18_840),
+     (True, 'oct5', 306, 1884),
+     (True, 'ico5', 306, 18_840)])
 def test_forward_model_setup(simulation, sensors, spacing, n_ch, n_source):
     case = simulation.case_manager
     loc = Localization()
+    info, fwd, cov = loc.pick_sensors(case.info, case.fwd[spacing], sensors)
+    assert info['nchan'] == n_ch
+    assert fwd['nsource'] == n_source
+    assert fwd['nchan'] == n_ch
+    assert cov['dim'] == n_ch
     loc.setup_fwd(case, sensors, spacing=spacing)
     assert loc.info['nchan'] == n_ch
     assert loc.fwd['nsource'] == n_source
@@ -110,17 +117,13 @@ def test_fast_rap_music_details(simulation):
     assert np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
 
 
-def test_clusters_localization(aspire_alphacsc_random_dataset, simulation):
-    dataset = aspire_alphacsc_random_dataset
+def test_clusters_localization(clusters_random_dataset, simulation):
+    dataset = clusters_random_dataset
     case = simulation.case_manager
-    ds = dataset.copy(deep=True)
-    prep_data = PrepareData(sensors=True)
-    (_, raw) = prep_data.fit_transform((
-        ds, simulation.raw_simulation))
-    localizer = ClustersLocalization(
-        case=case, db_name_detections='clusters_library_timestamps',
-        db_name_clusters='clusters_library_cluster_id',
-        detection_sfreq=200.)
-    results = localizer.fit_transform((ds, raw))
-    izpredictor = PredictIZClusters(case=case)
-    results = izpredictor.fit_transform(results)
+    # prep_data = PrepareData(sensors=True)
+    # (_, raw) = prep_data.fit_transform((
+    #     None, simulation.raw_simulation))
+    localizer = ClustersLocalization(case=case)
+    results = localizer.fit_transform((dataset, simulation.raw_simulation))
+    # izpredictor = PredictIZClusters(case=case)
+    # results = izpredictor.fit_transform(results)
