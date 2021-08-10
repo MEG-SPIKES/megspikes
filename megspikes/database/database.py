@@ -297,6 +297,7 @@ class Database():
             name='source')
 
         # channels
+        sensors = self.sensors
         channel_names_list = self.channel_names
         channels = np.arange(len(channel_names_list))
         grad_inx = self.channels_by_sensors['grad']
@@ -309,9 +310,12 @@ class Database():
             name='detection_property')
 
         cluster_property_coords = xr.DataArray(
-            data=['sensors', 'run', 'pipeline_type', 'n_events',
-                  'time_baseline', 'time_slope', 'time_peak'],
+            data=['cluster_id', 'sensors', 'run', 'atom', 'pipeline_type',
+                  'n_events', 'time_baseline', 'time_slope', 'time_peak'],
             dims=('cluster_property'),
+            attrs={
+                'grad_index': 0,
+                'mag_index': 1},
             name='cluster_property')
 
         # ---- Prepare dataarrays ---- #
@@ -348,9 +352,11 @@ class Database():
             name="cluster_properties")
 
         mne_localization = xr.DataArray(
-            data=np.zeros((n_clusters, len(source), len(time_evoked))),
-            dims=("cluster", "source", "time_evoked"),
+            data=np.zeros(
+                (len(sensors), n_clusters, len(source), len(time_evoked))),
+            dims=("sensors", "cluster", "source", "time_evoked"),
             coords={
+                "sensors": sensors,
                 "cluster": cluster,
                 "source": source,
                 "time_evoked": time_evoked
@@ -519,6 +525,6 @@ def read_meg_info_for_database(fif_file_path: Union[str, Path],
         channels_by_sensors[sens] = mne.pick_types(info, meg=sens)
     channel_names = info['ch_names']
     # first: left hemi, second: right hemi
-    fwd_sources = [['vertno'] for h in fwd['src']]
+    fwd_sources = [h['vertno'] for h in fwd['src']]
     del fwd
     return Database(sensors, channel_names, channels_by_sensors, fwd_sources)

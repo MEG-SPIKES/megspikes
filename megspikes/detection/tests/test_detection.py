@@ -3,7 +3,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from megspikes.database.database import select_sensors
+from megspikes.database.database import (select_sensors,
+                                         read_meg_info_for_database)
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
                                            PeakDetection,
@@ -198,14 +199,17 @@ def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
 
 
 @pytest.mark.happy
-def test_atoms_selection(simulation, aspire_alphacsc_random_dataset,
-                         clusters_empty_dataset):
+def test_atoms_selection(simulation, aspire_alphacsc_random_dataset):
     dataset = aspire_alphacsc_random_dataset
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file,
+        simulation.case_manager.fwd['ico5'])
     merging = AspireAlphacscRunsMerging(
         simulation.case_manager.dataset,
         simulation.case_manager.cluster_dataset,
+        db,
         runs=[int(i) for i in dataset.run.values],
         n_atoms=len(dataset.alphacsc_atom.values))
-    clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
-    cluster_dataset = merging.fit_transform(None)
+    # clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
+    cluster_dataset = merging.fit_transform((None, simulation.raw_simulation))
     del cluster_dataset
