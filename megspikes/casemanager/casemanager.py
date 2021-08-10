@@ -158,7 +158,7 @@ class CaseManager():
             fwd_name = self.basic_folders['forward_model']
             fwd_name = fwd_name / f'forward_{spacing}.fif'
             fwd, bem, src, trans = self._prepare_forward_model(
-                fwd_name, self.info, spacing='ico5', n_jobs=7, fixed=False)
+                fwd_name, self.info, spacing=spacing, n_jobs=7, fixed=False)
 
             if isinstance(sensors, str):
                 fwd = mne.pick_types_forward(fwd, meg=sensors)
