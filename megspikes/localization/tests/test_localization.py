@@ -7,7 +7,8 @@ import pytest
 from megspikes.database.database import select_sensors
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ClustersLocalization,
-    ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
+    ICAComponentsLocalization, Localization, PeakLocalization,
+    PredictIZClusters)
 from megspikes.utils import PrepareData
 from mne.beamformer import rap_music
 
@@ -20,7 +21,25 @@ def sample_path():
 
 
 @pytest.mark.happy
-def test_components_localization(dataset, simulation):
+@pytest.mark.parametrize(
+    "sensors,spacing,n_ch,n_source",
+    [('mag', 'oct5', 102, 1884),
+     ('grad', 'oct5', 204, 1884),
+     ('mag', 'ico5', 102, 18_840),
+     ('grad', 'ico5', 204, 18_840)])
+def test_forward_model_setup(simulation, sensors, spacing, n_ch, n_source):
+    case = simulation.case_manager
+    loc = Localization()
+    loc.setup_fwd(case, sensors, spacing=spacing)
+    assert loc.info['nchan'] == n_ch
+    assert loc.fwd['nsource'] == n_source
+    assert loc.fwd['nchan'] == n_ch
+    assert loc.cov['dim'] == n_ch
+
+
+@pytest.mark.happy
+def test_components_localization(aspire_alphacsc_random_dataset, simulation):
+    dataset = aspire_alphacsc_random_dataset
     run = 0
     sensors = 'grad'
     case = simulation.case_manager
@@ -91,7 +110,8 @@ def test_fast_rap_music_details(simulation):
     assert np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
 
 
-def test_clusters_localization(dataset, simulation):
+def test_clusters_localization(aspire_alphacsc_random_dataset, simulation):
+    dataset = aspire_alphacsc_random_dataset
     case = simulation.case_manager
     ds = dataset.copy(deep=True)
     prep_data = PrepareData(sensors=True)
