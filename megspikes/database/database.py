@@ -409,8 +409,9 @@ class LoadDataset(TransformerMixin, BaseEstimator):
 class SaveDataset(TransformerMixin, BaseEstimator):
     """Save merge subset of the database in the full dataset
     """
-    def __init__(self, dataset: Union[str, Path], sensors: Union[str, None],
-                 run: Union[int, None]) -> None:
+    def __init__(self, dataset: Union[str, Path],
+                 sensors: Union[str, None] = None,
+                 run: Union[int, None] = None) -> None:
         self.dataset = dataset
         self.sensors = sensors
         self.run = run
@@ -428,8 +429,12 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             raise RuntimeError(f'Sensors {type(self.sensors)} or run '
                                f'{type(self.run)} have a wrong type.')
         else:
-            X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
-                           engine="netcdf4")
+            if self.dataset.is_file():
+                X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                               engine="netcdf4")
+            else:
+                X[0].to_netcdf(self.dataset, mode='w', format="NETCDF4",
+                               engine="netcdf4")
         return X
 
     def update_selected_fields(self, from_ds: xr.Dataset, to_ds: xr.Dataset):

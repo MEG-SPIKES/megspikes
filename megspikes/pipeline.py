@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from megspikes.casemanager.casemanager import CaseManager
-from megspikes.database.database import LoadDataset, SaveDataset
+from megspikes.database.database import Database, LoadDataset, SaveDataset
 from megspikes.detection.detection import (CleanDetections,
                                            ComponentsSelection,
                                            DecompositionAlphaCSC,
@@ -18,6 +18,7 @@ from megspikes.utils import PrepareData, ToFinish
 
 
 def aspike_alphacsc_pipeline(case: CaseManager,
+                             database: Database,
                              n_ica_components: int = 20,
                              resample: float = 200.,
                              n_ica_peaks: int = 2000,
@@ -85,17 +86,14 @@ def aspike_alphacsc_pipeline(case: CaseManager,
         pipe_runs = []
     pipe = Pipeline([
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),
+        ('prepare_data', PrepareData(data_file=case.fif_file, sensors=True)),
         ('make_clusters_library', AspireAlphacscRunsMerging(
             detection_dataset=case.dataset,
             clusters_dataset=case.cluster_dataset,
+            database=database,
             runs=runs, n_atoms=n_atoms)),
-        # ('prepare_data', PrepareData(data_file=case.fif_file, sensors=True)),
-        # ('localize_clusters', ClustersLocalization(
-        #     case=case,
-        #     db_name_detections='clusters_library_timestamps',
-        #     db_name_clusters='clusters_library_cluster_id',
-        #     detection_sfreq=resample)),
+        ('localize_clusters', ClustersLocalization(case=case)),
         # ('predict_IZ', PredictIZClusters(case=case)),
-        # ('save_dataset', SaveDataset(dataset=case.dataset))
+        ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
     return pipe

@@ -424,7 +424,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         self.split_signal_kwarg = split_signal_kwarg
         self.n_times_atom = int(round(self.sfreq * self.atoms_width))
 
-    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         assert len(X[0].alphacsc_atom.values) == self.n_atoms, (
             "Number of atoms in Database and SelectAlphacscEvents "
             "is not equal.")
@@ -440,7 +440,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         self.cdl.fit(data_split)
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         # Transform the full MEG file
         data = X[1].get_data(picks='meg')
         z_hat = self.cdl.transform(data[None, :])[0]
@@ -546,10 +546,10 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
         self.atoms_selection_min_events = atoms_selection_min_events
         self.atom_width_samples = int(atom_width * sfreq)
 
-    def fit(self, X: Tuple[xr.Dataset, Union[mne.io.Raw]], y=None):
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
             "Wrong sfreq of the fif file or database time coordinate")
         assert len(X[0].alphacsc_atom.values) == self.n_atoms, (
@@ -841,7 +841,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
         self.runs = runs
         self.n_atoms = n_atoms
 
-    def fit(self, X: Tuple[Any, Union[mne.io.Raw]], y=None):
+    def fit(self, X: Tuple[Any, mne.io.Raw], y=None):
         # assert X[0].name == 'aspire_alphacsc_dataset'
         ds = xr.load_dataset(self.detection_dataset)
         goodness = check_and_read_from_dataset(
@@ -868,7 +868,7 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
                      engine="netcdf4")
         return self
 
-    def transform(self, X) -> Tuple[xr.Dataset, Union[mne.io.Raw]]:
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
         ds = self.database.make_clusters_dataset(
             X[1].times, len(self.selected_clusters), 1, X[1].info['sfreq'])
         sfreq = ds.time.attrs['sfreq']
