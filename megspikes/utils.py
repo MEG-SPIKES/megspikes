@@ -3,7 +3,13 @@ from pathlib import Path
 from typing import Any, List, Tuple, Union
 
 import mne
-from mne.source_space import _check_mri, _read_mri_info
+from mne.source_space import _check_mri
+try:
+    # mne 0.23
+    from mne.source_space import _read_mri_info
+except Exception:
+    # mne 0.24
+    from mne._freesurfer import _read_mri_info
 from mne.transforms import invert_transform, apply_trans
 from mne.fixes import _get_img_fdata
 import nibabel as nb
