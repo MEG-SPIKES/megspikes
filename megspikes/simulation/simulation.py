@@ -58,17 +58,20 @@ class Simulation:
         }
 
         # Set approximate peak times for each spike in self.spike_shapes
-        self.peak_times = [0.195, 0.110, 0.290, 0.260]
+        self.peak_times = [0.187, 0.115, 0.275, 0.254]
+        # Absolute maximum of the spike timeseries to estimate SNR
+        self.max_times = [np.argmax(np.abs(s)) for s in self.spike_shapes]
 
     def simulate_dataset(self, n_events: List[int] = [15, 0, 0, 0],
                          simultaneous: List[bool] = [False]*4,
-                         sfreq: float = 1000., snr: float = 1.):
+                         sfreq: float = 1000., noise_scaler: float = 1.):
         # length seconds
         # TODO: add spikes reading option
         info, fwd, raw = self._read_mne_sample_dataset()
         events = self._prepare_events(n_events, simultaneous, sfreq=sfreq)
         source_simulator = self._simulate_sources(events, fwd['src'], 1/sfreq)
-        simulation = self._simulate_raw(source_simulator, fwd, info, raw, snr)
+        simulation = self._simulate_raw(
+            source_simulator, fwd, info, raw, noise_scaler)
         simulation, spikes = self._add_annotation(simulation, events, sfreq)
         self.spikes = spikes  # seconds
         self._simulate_data_structure(simulation)
@@ -163,7 +166,7 @@ class Simulation:
 
     def _simulate_raw(self, source_simulator: mne.simulation.SourceSimulator,
                       fwd: mne.Forward, info: mne.Info, raw: mne.io.Raw,
-                      snr: float = 1.) -> mne.io.Raw:
+                      noise_scaler: float = 1.) -> mne.io.Raw:
         iir_filter = mne.time_frequency.fit_iir_model_raw(
             raw, order=5, picks='meg', tmin=60, tmax=180)[1]
         rng = np.random.RandomState(0)
@@ -171,7 +174,7 @@ class Simulation:
             info, source_simulator, forward=fwd)
         noise_cov = mne.make_ad_hoc_cov(simulation.info)
         # Scale the noise to achieve the desired SNR
-        noise_cov['data'] *= snr
+        noise_cov['data'] *= 1 / noise_scaler
         mne.simulation.add_noise(simulation, cov=noise_cov,
                                  iir_filter=iir_filter, random_state=rng)
         return simulation

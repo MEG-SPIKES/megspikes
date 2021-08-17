@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from pathlib import Path
 from typing import Any, List, Tuple, Union
 
@@ -236,7 +235,17 @@ def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
     nb.save(nb.Nifti1Image(data, affine), fsave)
 
 
+def find_spike_snr(data: np.ndarray, peak):
+    # data: trials, channels, times
+    max_ch = np.argmax(np.abs(data[:, :, peak]).mean(axis=0))
+    mean_peak = np.abs(data[:, max_ch, peak].mean())
+    sd = data[:, max_ch, :].std()
+    print(sd, mean_peak)
+    return mean_peak / sd
+
+
 class ToFinish(TransformerMixin, BaseEstimator):
+    """Empty template to finish sklearn Pipeline."""
     def __init__(self) -> None:
         pass
 
