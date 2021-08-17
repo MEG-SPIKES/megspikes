@@ -8,8 +8,7 @@ from megspikes.database.database import read_meg_info_for_database
 def run_simulation(test_sample_path):
     test_sample_path.mkdir(exist_ok=True, parents=True)
     sim = Simulation(test_sample_path)
-    sim.load_mne_dataset()
-    sim.simulate_dataset(length=10)
+    sim.simulate_dataset([10, 0, 0, 0])
     return sim
 
 
@@ -139,7 +138,8 @@ def prepare_clusters_random_dataset(simulation):
         n_clusters=n_clusters,
         evoked_length=1.,  # second
         sfreq=1000.)
-    true_spike_peaks = np.int32(simulation.spikes)
+    true_spike_peaks = np.int32(
+        np.unique(simulation.spikes) * raw.info['sfreq'])
     clusters = np.zeros_like(true_spike_peaks)
     clusters[4:] = 1
     ds.spike.loc[dict(detection_property='detection')][true_spike_peaks] = 1

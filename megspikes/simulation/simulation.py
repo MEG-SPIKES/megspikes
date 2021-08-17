@@ -18,7 +18,6 @@ mne.set_log_level("ERROR")
 
 
 class Simulation:
-
     def __init__(self, root_dir_path: Union[Path, str] = None,
                  time_between_events: int = 1, atlas: str = 'aparc.a2009s'):
         if isinstance(root_dir_path, (str, Path)):
@@ -70,7 +69,8 @@ class Simulation:
         events = self._prepare_events(n_events, simultaneous, sfreq=sfreq)
         source_simulator = self._simulate_sources(events, fwd['src'], 1/sfreq)
         simulation = self._simulate_raw(source_simulator, fwd, info, raw, snr)
-        self._add_annotation(simulation, events, sfreq)
+        simulation, spikes = self._add_annotation(simulation, events, sfreq)
+        self.spikes = spikes  # seconds
         self._simulate_data_structure(simulation)
         self._simulate_case()
         self.events = events
@@ -188,7 +188,7 @@ class Simulation:
             onset=times,  # in seconds
             duration=[0.001]*len(times),  # in seconds
             description=labels)
-        return simulation.set_annotations(spikes_annot)
+        return simulation.set_annotations(spikes_annot), times
 
     def _simulate_data_structure(self, simulation: mne.io.Raw):
         shutil.copy(str(self.case_info), str(self.root))

@@ -19,8 +19,7 @@ def fixture_data():
     sample_path.mkdir(exist_ok=True, parents=True)
 
     sim = Simulation(sample_path)
-    sim.load_mne_dataset()
-    sim.simulate_dataset(length=10)
+    sim.simulate_dataset([10, 0, 0, 0])
     return sim
 
 
