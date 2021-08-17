@@ -237,11 +237,16 @@ def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
 
 def find_spike_snr(data: np.ndarray, peak):
     # data: trials, channels, times
-    max_ch = np.argmax(np.abs(data[:, :, peak]).mean(axis=0))
-    mean_peak = np.abs(data[:, max_ch, peak].mean())
-    sd = data[:, max_ch, :].std()
-    print(sd, mean_peak)
-    return mean_peak / sd
+    mean_peak = data[:, :, peak-20:peak+20].mean(axis=-1).mean(0)**2
+    var_noise = data[:, :, :].var(axis=-1).mean(0)
+    # snr = (mean_peak / var_noise).mean()
+    snr = 10*np.log10((mean_peak / var_noise).mean())
+    return snr
+
+
+def max_channel(data: np.ndarray, peak):
+    # data: trials, channels, times
+    return np.argmax(np.abs(data[:, :, peak]).mean(axis=0))
 
 
 class ToFinish(TransformerMixin, BaseEstimator):

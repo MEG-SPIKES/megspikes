@@ -174,7 +174,7 @@ class Simulation:
             info, source_simulator, forward=fwd)
         noise_cov = mne.make_ad_hoc_cov(simulation.info)
         # Scale the noise to achieve the desired SNR
-        noise_cov['data'] *= 1 / noise_scaler
+        noise_cov['data'] *= noise_scaler
         mne.simulation.add_noise(simulation, cov=noise_cov,
                                  iir_filter=iir_filter, random_state=rng)
         return simulation
