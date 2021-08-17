@@ -139,8 +139,10 @@ dmypy.json
 *.fif
 
 # test example
-/tutorial_data/
+/examples/data/
+/examples/exapmles_work_in_progress/
 /tests_data/
+/megspikes/clusters_gui/
 
 # data
 *.nc
