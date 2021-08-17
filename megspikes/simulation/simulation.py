@@ -207,11 +207,6 @@ class Simulation:
         # Save simulation
         simulation.save(str(fraw2), overwrite=True)
 
-        if False:
-            data, _ = simulate_raw_fast(seconds=1, sampling_freq=1000)
-            data.save(str(fraw2), overwrite=True)
-            self.raw_simulation = data
-
         # Copy .trans file
         shutil.copy(
             op.join(self.meg_path, 'sample_audvis_raw-trans.fif'),
