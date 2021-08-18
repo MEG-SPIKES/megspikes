@@ -235,18 +235,25 @@ def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
     nb.save(nb.Nifti1Image(data, affine), fsave)
 
 
-def find_spike_snr(data: np.ndarray, peak):
+def spike_snr_all_channels(data: np.ndarray, peak):
     # data: trials, channels, times
-    mean_peak = data[:, :, peak-20:peak+20].mean(axis=-1).mean(0)**2
+    mean_peak = (data[:, :, peak-20:peak+20]**2).mean(axis=-1).mean(0)
     var_noise = data[:, :, :].var(axis=-1).mean(0)
     # snr = (mean_peak / var_noise).mean()
     snr = 10*np.log10((mean_peak / var_noise).mean())
     return snr
 
 
-def max_channel(data: np.ndarray, peak):
+def spike_snr_max_channel(data: np.ndarray, peak, n_max_channels=20):
     # data: trials, channels, times
-    return np.argmax(np.abs(data[:, :, peak]).mean(axis=0))
+    max_ch = np.argsort(
+        (data[:, :, peak-20:peak+20]**2).mean(
+            axis=-1).mean(axis=0))[::-1][:n_max_channels]
+    mean_peak = (data[:, max_ch, peak-20:peak+20]**2).mean(axis=-1).mean(0)
+    var_noise = data[:, max_ch, :].var(axis=-1).mean(0)
+    # snr = (mean_peak / var_noise).mean()
+    snr = 10*np.log10((mean_peak / var_noise).mean())
+    return snr, max_ch
 
 
 class ToFinish(TransformerMixin, BaseEstimator):
