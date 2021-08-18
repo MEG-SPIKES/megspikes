@@ -52,7 +52,7 @@ class Simulation:
         # label, activation (nAm)
         self.activations = {
             'spike_shape_1': [('G_temp_sup-G_T_transv-rh', 120)],
-            'spike_shape_2': [('S_subparietal-rh', 280)],
+            'spike_shape_2': [('S_subparietal-rh', 120)],
             'spike_shape_3': [('S_subparietal-lh', 120)],
             'spike_shape_4': [('S_subparietal-lh', 120)]
         }
@@ -65,6 +65,21 @@ class Simulation:
     def simulate_dataset(self, n_events: List[int] = [15, 0, 0, 0],
                          simultaneous: List[bool] = [False]*4,
                          sfreq: float = 1000., noise_scaler: float = 1.):
+        """Simulate raw fif data and case file structure.
+
+        Parameters
+        ----------
+        n_events : List[int], optional
+            Number of the events for each spike shape, by default [15, 0, 0, 0]
+        simultaneous : List[bool], optional
+            Controls whether the next event is added simultaneously with the
+            previous one. For example, if True for event 1, then events 1 and 2
+            have the same timestamps., by default [False]*4
+        sfreq : float, optional
+            sample frequency, by default 1000.
+        noise_scaler : float, optional
+            Amplitude of the noise added to the data, by default 1.
+        """
         # length seconds
         # TODO: add spikes reading option
         info, fwd, raw = self._read_mne_sample_dataset()
@@ -76,6 +91,8 @@ class Simulation:
         self.spikes = spikes  # seconds
         self._simulate_data_structure(simulation)
         self._simulate_case()
+        # Save resection
+        self.save_resection_as_nifti(self.fresection, fwd)
         self.events = events
         self.raw_simulation = simulation
 
@@ -232,13 +249,11 @@ class Simulation:
         t1 = nb.load(mri_fname)
         nb.save(t1, self.fresection.with_name("T1.nii"))
 
-        # Save resection
-        # self.save_resection_as_nifti(self.fresection)
-
-    def save_resection_as_nifti(self, fsave: Union[str, Path]):
+    def save_resection_as_nifti(self, fsave: Union[str, Path],
+                                fwd: mne.Forward):
         # TODO: add more labels
         label = self.labels[0]
-        vertices = [i['vertno'] for i in self.fwd['src']]
+        vertices = [i['vertno'] for i in fwd['src']]
         hemi = 0 if label.hemi == 'lh' else 1
         data = []
         for i in [0, 1]:
@@ -258,9 +273,7 @@ class Simulation:
         data = np.hstack(data)
         stc = mne.SourceEstimate(
             data, vertices, tmin=0, tstep=0.001, subject=self.mne_subject)
-        stc_to_nifti(
-            stc, self.fwd, self.mne_subject,
-            self.subjects_dir, fsave)
+        stc_to_nifti(stc, fwd, self.mne_subject, self.subjects_dir, fsave)
 
     def save_manual_detections(self):
         pass
