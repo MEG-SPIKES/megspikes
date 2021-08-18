@@ -1,5 +1,3 @@
-import holoviews as hv
-import hvplot.xarray
 import matplotlib.pylab as plt
 import mne
 import numpy as np
@@ -10,9 +8,9 @@ from scipy import signal
 from sklearn import preprocessing
 
 from ..database.database import check_and_read_from_dataset
-from ..utils import create_epochs
+from ..utils import (create_epochs, spike_snr_all_channels,
+                     spike_snr_max_channel)
 
-hv.extension('bokeh')
 
 mne.set_log_level("WARNING")
 
@@ -71,6 +69,9 @@ class PlotPipeline():
     def plot_sources_and_detections(self, ds: xr.Dataset,
                                     run: int = 0,
                                     filter_ica: bool = True):
+        # import holoviews as hv
+        import hvplot.xarray
+
         def select_detections(ts_for_overlay, run,
                               detection_property='ica_detection',
                               by='ica_component',
@@ -243,9 +244,9 @@ class PlotPipeline():
         max_channel = np.argmax(u_hat)
         v_hat = v_hat[atom]
         v_hat = v_hat / (np.max(np.abs(v_hat)))
-        # v_hat_times = np.linspace(-0.25, 0.25, len(v_hat))
-        v_hat_times = ds.atom_v_time.values
-        v_hat_times -= v_hat_times.mean()
+        v_hat_times = np.linspace(-0.25, 0.25, len(v_hat))
+        # v_hat_times = ds.atom_v_time.values
+        # v_hat_times -= v_hat_times.mean()
 
         detection_mask = (detections > 0) & (atoms == atom)
         spikes = np.where(detection_mask)[0]
@@ -297,3 +298,27 @@ class PlotPipeline():
 
     def plot_iz_prediction(self):
         pass
+
+
+def plot_epochs_snr(epochs: mne.Epochs, event_name: str, peak_ind: int = 500,
+                    n_max_channels: int = 20):
+    data = epochs[event_name].get_data()
+    snr_all = spike_snr_all_channels(data, peak_ind)
+    snr_max, max_ch = spike_snr_max_channel(data, peak_ind, n_max_channels)
+
+    fig, ax = plt.subplots(1, 2, figsize=(14, 3), dpi=100)
+    abs_data = data**2
+    ax[0].plot(abs_data.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
+    ax[0].plot(abs_data.mean(axis=1).mean(0), c='r')
+    ax[0].set_title(f'SNR all channels: {snr_all:.2}dB')
+    ax[0].set_xlabel('$Time [ms]$')
+    ax[0].set_ylabel('$Amplitude^2$')
+
+    max_chs = data[:, max_ch, :]**2
+    ax[1].plot(max_chs.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
+    ax[1].plot(max_chs.mean(axis=1).mean(0), c='r')
+    ax[1].set_title(f'SNR {n_max_channels} max channels: {snr_max:.2}dB')
+    ax[1].set_xlabel('$Time [ms]$')
+    ax[1].set_ylabel('$Amplitude^2$')
+    plt.suptitle(f"Event {event_name}")
+    return fig
