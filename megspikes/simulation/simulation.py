@@ -251,24 +251,24 @@ class Simulation:
 
     def save_resection_as_nifti(self, fsave: Union[str, Path],
                                 fwd: mne.Forward):
-        # TODO: add more labels
-        label = self.labels[0]
         vertices = [i['vertno'] for i in fwd['src']]
-        hemi = 0 if label.hemi == 'lh' else 1
-        data = []
-        for i in [0, 1]:
-            data.append(np.zeros(len(vertices[i])))
-            if i == hemi:
-                lab_data = [
-                    1 if i in label.vertices else 0 for i in vertices[hemi]]
-                data[i] = np.array(lab_data)
-        label_mni = mne.vertex_to_mni(
-            vertices[hemi][data[hemi] != 0],
-            hemis=hemi, subject=self.mne_subject,
-            subjects_dir=self.subjects_dir)
+        data = [np.zeros(len(vertices[i])) for i in [0, 1]]
+        for lab in range(len(self.labels)):
+            label = self.labels[lab]
+            hemi = 0 if label.hemi == 'lh' else 1
+            for n, i in enumerate(vertices[hemi]):
+                if i in label.vertices:
+                    data[hemi][n] = lab + 1
+        labels_mni = []
+        for hemi in [0, 1]:
+            labels_mni.append(mne.vertex_to_mni(
+                vertices[hemi][data[hemi] != 0],
+                hemis=hemi, subject=self.mne_subject,
+                subjects_dir=self.subjects_dir))
+        self.labels_mni = np.vstack(labels_mni)
 
         # pos_mni = np.vstack(all_mni)
-        np.save(fsave.with_suffix(".npy"), label_mni)
+        # np.save(fsave.with_suffix(".npy"), label_mni)
 
         data = np.hstack(data)
         stc = mne.SourceEstimate(
