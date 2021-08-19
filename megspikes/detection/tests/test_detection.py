@@ -11,7 +11,8 @@ from megspikes.detection.detection import (DecompositionICA,
                                            CleanDetections,
                                            DecompositionAlphaCSC,
                                            SelectAlphacscEvents,
-                                           AspireAlphacscRunsMerging)
+                                           AspireAlphacscRunsMerging,
+                                           ManualDetections)
 from megspikes.utils import PrepareData
 
 
@@ -211,5 +212,21 @@ def test_atoms_selection(simulation, aspire_alphacsc_random_dataset):
         runs=[int(i) for i in dataset.run.values],
         n_atoms=len(dataset.alphacsc_atom.values))
     # clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
-    cluster_dataset = merging.fit_transform((None, simulation.raw_simulation))
+    cluster_dataset = merging.fit_transform(
+        (None, simulation.raw_simulation.copy()))
     del cluster_dataset
+
+
+@pytest.mark.happy
+def test_clusters_db_for_manual_detections(simulation):
+    db = read_meg_info_for_database(
+        simulation.case_manager.fif_file,
+        simulation.case_manager.fwd['ico5'])
+    mdet = ManualDetections(
+        simulation.case_manager.manual_cluster_dataset,
+        db,
+        simulation.detections,
+        simulation.clusters)
+    mcluster_dataset = mdet.fit_transform(
+        (None, simulation.raw_simulation.copy()))
+    del mcluster_dataset

@@ -11,8 +11,8 @@ mne.set_log_level("ERROR")
 @pytest.fixture(scope="module", name='simulation')
 def run_simulation(test_sample_path):
     test_sample_path.mkdir(exist_ok=True, parents=True)
-    sim = Simulation(test_sample_path)
-    sim.simulate_dataset([10, 0, 0, 0])
+    sim = Simulation(test_sample_path, n_events=[10, 0, 0, 0])
+    sim.simulate_dataset()
     return sim
 
 
@@ -34,7 +34,7 @@ def prepare_aspire_alphacsc_random_dataset(simulation):
     db = read_meg_info_for_database(
         simulation.case_manager.fif_file, case.fwd['ico5'])
     sfreq = 200.
-    raw = simulation.raw_simulation.resample(sfreq, npad="auto")
+    raw = simulation.raw_simulation.copy().resample(sfreq, npad="auto")
     n_ica_comp = 4
     n_atoms = 2
     atom_length = 0.5  # seconds

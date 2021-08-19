@@ -122,6 +122,10 @@ class Simulation:
     def peaks(self):
         return self.peak_times
 
+    @property
+    def raw_simulation(self):
+        return self.raw
+
     def __repr__(self) -> str:
         s = f"{self.__class__.__name__}\n\n"
         s += f"Spike shapes file location: {self.spikes_file}\n"
@@ -159,7 +163,7 @@ class Simulation:
         # Save resection
         self._labels_to_resection(
             self.fresection, self.case_manager.fwd['ico5'])
-        self.raw_simulation = simulation
+        self.raw = simulation
 
     def _read_mne_sample_dataset(self) -> Tuple[mne.Info, mne.Forward,
                                                 mne.io.Raw]:

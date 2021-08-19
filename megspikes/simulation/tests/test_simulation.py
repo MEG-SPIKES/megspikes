@@ -4,6 +4,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 from megspikes.simulation.simulation import Simulation
+import mne
+
+mne.set_log_level("ERROR")
 
 
 @pytest.fixture(name="sample_path")
@@ -19,6 +22,8 @@ def test_simulation(sample_path):
     sim = Simulation(sample_path)
     sim.simulate_dataset()
     assert len(sim.clusters) == len(sim.detections)
+    raw_fif = mne.io.read_raw_fif(sim.case_manager.fif_file)
+    assert (raw_fif.times == sim.raw_simulation.times).all()
 
 
 @pytest.mark.parametrize(
