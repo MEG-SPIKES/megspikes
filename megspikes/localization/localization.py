@@ -21,7 +21,17 @@ from ..utils import create_epochs, onset_slope_timepoints
 mne.set_log_level("ERROR")
 
 
+def array_to_stc(data: np.ndarray, fwd: mne.Forward, subject: str
+                 ) -> mne.SourceEstimate:
+    """Convert SourceEstimate data to mne.SourceEstimate object"""
+    vertices = [i['vertno'] for i in fwd['src']]
+    return mne.SourceEstimate(
+        data, vertices, tmin=0, tstep=0.001, subject=subject)
+
+
 class Localization():
+    array_to_stc = staticmethod(array_to_stc)
+
     def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True,
                   spacing: str = 'oct5'):
         if not isinstance(case.fwd[spacing], mne.Forward):
@@ -136,12 +146,6 @@ class Localization():
             tris, vertices, vertices, smoothing_steps, maps, warn=False)
         data = smooth_mat.dot(data)
         return data.flatten()
-
-    def array_to_stc(self, data: np.ndarray) -> mne.SourceEstimate:
-        """Convert SourceEstimate data to mne.SourceEstimate object"""
-        vertices = [i['vertno'] for i in self.fwd['src']]
-        return mne.SourceEstimate(
-            data, vertices, tmin=0, tstep=0.001, subject=self.case_name)
 
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
