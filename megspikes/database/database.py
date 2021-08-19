@@ -1,9 +1,11 @@
-from typing import List, Dict, Union, Any, Tuple
+import warnings
 from pathlib import Path
-import xarray as xr
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
+from typing import Any, Dict, List, Tuple, Union
+
 import mne
+import numpy as np
+import xarray as xr
+from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class Database():
@@ -484,12 +486,13 @@ def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
 
     if isinstance(selection, dict):
         data = ds[da_name].loc[selection].values.copy()
-        assert np.max(data) != np.min(data), (
-            f"{da_name}.loc[{selection}] values are all the same")
+        if np.max(data) != np.min(data):
+            warnings.warn(
+                f"{da_name}.loc[{selection}] values are all the same")
     else:
         data = ds[da_name].values.copy()
-        if da_name != 'ica_component_selection':
-            assert np.max(data) != np.min(data), (
+        if np.max(data) != np.min(data):
+            warnings.warn(
                 f"{da_name} values are all the same")
         else:
             assert data.any(), (

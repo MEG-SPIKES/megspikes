@@ -45,5 +45,6 @@ def test_manual_pipeline(simulation):
     db = read_meg_info_for_database(
         simulation.case_manager.fif_file,
         simulation.case_manager.fwd['ico5'])
-    manual_pipeline(simulation.case_manager, db, simulation.detections,
-                    simulation.clusters)
+    pipe = manual_pipeline(simulation.case_manager, db, simulation.detections,
+                           simulation.clusters - 1)
+    _ = pipe.fit_transform((None, simulation.raw_simulation.copy()))
