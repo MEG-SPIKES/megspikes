@@ -320,6 +320,11 @@ class Database():
                 'mag_index': 1},
             name='cluster_property')
 
+        iz_prediction_timepoints_coords = xr.DataArray(
+            data=['baseline', 'slope', 'peak'],
+            dims=('iz_prediction_timepoint'),
+            name='iz_prediction_timepoint')
+
         # ---- Prepare dataarrays ---- #
 
         channel_names = xr.DataArray(
@@ -375,6 +380,16 @@ class Database():
                 },
             name="evoked")
 
+        iz_prediction = xr.DataArray(
+            data=np.zeros(
+                (len(source), 3)),
+            dims=("source", "iz_prediction_timepoint"),
+            coords={
+                "source": source,
+                "time_evoked": iz_prediction_timepoints_coords
+                },
+            name="iz_prediction")
+
         # ---- Create dataset ---- #
 
         ds = xr.merge([
@@ -383,6 +398,7 @@ class Database():
             cluster_properties,
             mne_localization,
             evoked,
+            iz_prediction
             ])
         return ds
 
