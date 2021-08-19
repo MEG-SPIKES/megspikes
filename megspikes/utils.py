@@ -256,6 +256,50 @@ def spike_snr_max_channel(data: np.ndarray, peak, n_max_channels=20):
     return snr, max_ch
 
 
+def labels_to_mni(labels: List[mne.Label], fwd: mne.Forward,
+                  subject: str, subjects_dir: str) -> Tuple[
+                      np.ndarray, np.ndarray, List[List[int]]]:
+    """Convert labels to mni coordinates.
+
+    Parameters
+    ----------
+    labels : List[mne.Label]
+        List of a FreeSurfer/MNE label
+    fwd : mne.Forward
+        MNE Python forward model
+    subject : str
+        FreeSurfer subject name
+    subjects_dir : str
+        FreeSurfer subjects folder
+
+    Returns
+    -------
+    np.ndarray
+        array with MNI coordinates of the resection area.
+    np.ndarray
+        vertices like list of np.ndarray with non-zero elements for sources
+        included in labels.
+    List[List[int]]
+        List of labels vertex indices
+    """
+    vertices = [i['vertno'] for i in fwd['src']]
+    data = [np.zeros(len(vertices[i])) for i in [0, 1]]
+    for lab in range(len(labels)):
+        label = labels[lab]
+        hemi = 0 if label.hemi == 'lh' else 1
+        for n, i in enumerate(vertices[hemi]):
+            if i in label.vertices:
+                data[hemi][n] = lab + 1
+    labels_mni = []
+    for hemi in [0, 1]:
+        labels_mni.append(mne.vertex_to_mni(
+            vertices[hemi][data[hemi] != 0],
+            hemis=hemi, subject=subject,
+            subjects_dir=subjects_dir))
+    data = np.hstack(data)
+    return np.vstack(labels_mni), data, vertices
+
+
 class ToFinish(TransformerMixin, BaseEstimator):
     """Empty template to finish sklearn Pipeline."""
     def __init__(self) -> None:

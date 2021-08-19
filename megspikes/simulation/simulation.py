@@ -12,7 +12,7 @@ from scipy import signal
 from scipy.misc import electrocardiogram
 
 from ..casemanager.casemanager import CaseManager
-from ..utils import stc_to_nifti
+from ..utils import stc_to_nifti, labels_to_mni
 
 mne.set_log_level("ERROR")
 
@@ -92,7 +92,8 @@ class Simulation:
         self._simulate_data_structure(simulation)
         self._simulate_case()
         # Save resection
-        self.save_resection_as_nifti(self.fresection, fwd)
+        self._labels_to_resection(
+            self.fresection, self.case_manager.fwd['ico5'])
         self.events = events
         self.raw_simulation = simulation
 
@@ -249,28 +250,20 @@ class Simulation:
         t1 = nb.load(mri_fname)
         nb.save(t1, self.fresection.with_name("T1.nii"))
 
-    def save_resection_as_nifti(self, fsave: Union[str, Path],
-                                fwd: mne.Forward):
-        vertices = [i['vertno'] for i in fwd['src']]
-        data = [np.zeros(len(vertices[i])) for i in [0, 1]]
-        for lab in range(len(self.labels)):
-            label = self.labels[lab]
-            hemi = 0 if label.hemi == 'lh' else 1
-            for n, i in enumerate(vertices[hemi]):
-                if i in label.vertices:
-                    data[hemi][n] = lab + 1
-        labels_mni = []
-        for hemi in [0, 1]:
-            labels_mni.append(mne.vertex_to_mni(
-                vertices[hemi][data[hemi] != 0],
-                hemis=hemi, subject=self.mne_subject,
-                subjects_dir=self.subjects_dir))
-        self.labels_mni = np.vstack(labels_mni)
+    def _labels_to_resection(self, fsave: Union[str, Path],
+                             fwd: mne.Forward):
+        """Convert labels to the resection area.
 
-        # pos_mni = np.vstack(all_mni)
-        # np.save(fsave.with_suffix(".npy"), label_mni)
+        Parameters
+        ----------
+        fsave : Union[str, Path]
+            Path to save resection nifti image
+        fwd : mne.Forward
+            Forward model
+        """
+        self.mni_resection, data, vertices = labels_to_mni(
+            self.labels, fwd, self.mne_subject, self.subjects_dir)
 
-        data = np.hstack(data)
         stc = mne.SourceEstimate(
             data, vertices, tmin=0, tstep=0.001, subject=self.mne_subject)
         stc_to_nifti(stc, fwd, self.mne_subject, self.subjects_dir, fsave)
