@@ -508,6 +508,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                  min_sources: int = 10,
                  spacing='ico5'):
         self.setup_fwd(case, sensors, spacing=spacing)
+        self.spacing = spacing
         self.smoothing_steps_one_cluster = smoothing_steps_one_cluster
         self.smoothing_steps_final = smoothing_steps_final
         self.amplitude_threshold = amplitude_threshold
