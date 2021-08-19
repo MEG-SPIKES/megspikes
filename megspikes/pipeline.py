@@ -93,7 +93,7 @@ def aspire_alphacsc_pipeline(case: CaseManager,
             database=database,
             runs=runs, n_atoms=n_atoms)),
         ('localize_clusters', ClustersLocalization(case=case)),
-        # ('predict_IZ', PredictIZClusters(case=case)),
+        ('predict_IZ', PredictIZClusters(case=case)),
         ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
     return pipe

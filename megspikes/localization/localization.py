@@ -540,9 +540,9 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
         for slope_time, slope_name in zip([baseline, slope, peak],
                                           ['baseline', 'slope', 'peak']):
             clusters_stcs = []
-            for cluster, sens in zip(clusters, sensors):
+            for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
                 stc_cluster = stc_clusters[
-                    sens, cluster, :, slope_time].squeeze()
+                    sens, cluster, :, slope_time[i]].squeeze()
                 # Binarize SourceEstimate
                 stc_cluster_bin = self.binarize_stc(
                     stc_cluster, self.fwd, self.smoothing_steps_one_cluster,

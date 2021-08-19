@@ -117,13 +117,11 @@ def test_fast_rap_music_details(simulation):
     assert np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
 
 
+@pytest.mark.happy
 def test_clusters_localization(clusters_random_dataset, simulation):
     dataset = clusters_random_dataset
     case = simulation.case_manager
-    # prep_data = PrepareData(sensors=True)
-    # (_, raw) = prep_data.fit_transform((
-    #     None, simulation.raw_simulation))
     localizer = ClustersLocalization(case=case)
     results = localizer.fit_transform((dataset, simulation.raw_simulation))
-    # izpredictor = PredictIZClusters(case=case)
-    # results = izpredictor.fit_transform(results)
+    izpredictor = PredictIZClusters(case=case)
+    results = izpredictor.fit_transform(results)
