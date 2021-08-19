@@ -1,5 +1,6 @@
 from typing import List
 
+import numpy as np
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from megspikes.casemanager.casemanager import CaseManager
@@ -9,10 +10,11 @@ from megspikes.detection.detection import (CleanDetections,
                                            DecompositionAlphaCSC,
                                            DecompositionICA, PeakDetection,
                                            SelectAlphacscEvents,
-                                           AspireAlphacscRunsMerging)
+                                           AspireAlphacscRunsMerging,
+                                           ManualDetections)
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ClustersLocalization,
-    ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
+    ICAComponentsLocalization, PeakLocalization)
 from megspikes.utils import PrepareData, ToFinish
 
 
@@ -97,3 +99,13 @@ def aspire_alphacsc_pipeline(case: CaseManager,
         ])
     return pipe
 
+
+def manual_pipeline(case: CaseManager, database: Database,
+                    detections: np.ndarray, clusters: np.ndarray):
+    pipe = Pipeline([
+        ('make_clusters_library', ManualDetections(
+            case.cluster_dataset, database, detections, clusters)),
+        ('localize_clusters', ClustersLocalization(case=case)),
+        ('save_dataset', SaveDataset(dataset=case.manual_cluster_dataset))
+    ])
+    return pipe
