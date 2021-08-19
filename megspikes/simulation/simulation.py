@@ -80,8 +80,11 @@ class Simulation:
         noise_scaler : float, optional
             Amplitude of the noise added to the data, by default 1.
         """
-        # length seconds
-        # TODO: add spikes reading option
+        self.n_events = n_events
+        self.simultaneous = simultaneous
+        self.sfreq = sfreq
+        self.noise_scaler = noise_scaler
+
         info, fwd, raw = self._read_mne_sample_dataset()
         events = self._prepare_events(n_events, simultaneous, sfreq=sfreq)
         source_simulator = self._simulate_sources(events, fwd['src'], 1/sfreq)
@@ -261,8 +264,10 @@ class Simulation:
         fwd : mne.Forward
             Forward model
         """
+        labels = [lab for n, lab in enumerate(self.labels)
+                  if self.n_events[n] != 0]
         self.mni_resection, data, vertices = labels_to_mni(
-            self.labels, fwd, self.mne_subject, self.subjects_dir)
+            labels, fwd, self.mne_subject, self.subjects_dir)
 
         stc = mne.SourceEstimate(
             data, vertices, tmin=0, tstep=0.001, subject=self.mne_subject)

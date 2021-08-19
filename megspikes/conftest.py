@@ -1,7 +1,11 @@
-import pytest
 import numpy as np
-from megspikes.simulation.simulation import Simulation, simulate_raw_fast
+import pytest
+
 from megspikes.database.database import read_meg_info_for_database
+from megspikes.simulation.simulation import Simulation, simulate_raw_fast
+import mne
+
+mne.set_log_level("ERROR")
 
 
 @pytest.fixture(scope="module", name='simulation')
@@ -10,6 +14,18 @@ def run_simulation(test_sample_path):
     sim = Simulation(test_sample_path)
     sim.simulate_dataset([10, 0, 0, 0])
     return sim
+
+
+@pytest.fixture(scope="module", name='simulation_epochs_grad')
+def simulation_epochs_grad(simulation):
+    raw = simulation.raw_simulation.copy()
+    raw.filter(2, 90)
+    events = mne.events_from_annotations(raw)
+    epochs_grad = mne.Epochs(
+        raw, events[0], events[1], tmin=-0.5, tmax=0.5,
+        baseline=None, preload=True, reject_by_annotation=False,
+        proj=False, picks='grad')
+    return epochs_grad
 
 
 @pytest.fixture(scope="module", name="aspire_alphacsc_random_dataset")

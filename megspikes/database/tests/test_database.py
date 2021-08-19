@@ -9,18 +9,13 @@ from megspikes.database.database import (Database, LoadDataset, SaveDataset,
                                          check_and_write_to_dataset,
                                          read_meg_info_for_database,
                                          select_sensors)
-from megspikes.simulation.simulation import Simulation
 
 
-@pytest.fixture(name='simulation')
-def fixture_data():
+@pytest.fixture(scope="module", name="test_sample_path")
+def sample_path2():
     sample_path = Path(op.dirname(__file__)).parent.parent.parent
     sample_path = sample_path / 'tests_data' / 'test_database'
-    sample_path.mkdir(exist_ok=True, parents=True)
-
-    sim = Simulation(sample_path)
-    sim.simulate_dataset([10, 0, 0, 0])
-    return sim
+    return sample_path
 
 
 @pytest.mark.happy

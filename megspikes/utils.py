@@ -292,10 +292,12 @@ def labels_to_mni(labels: List[mne.Label], fwd: mne.Forward,
                 data[hemi][n] = lab + 1
     labels_mni = []
     for hemi in [0, 1]:
-        labels_mni.append(mne.vertex_to_mni(
+        l_mni = mne.vertex_to_mni(
             vertices[hemi][data[hemi] != 0],
             hemis=hemi, subject=subject,
-            subjects_dir=subjects_dir))
+            subjects_dir=subjects_dir)
+        if l_mni.size != 0:
+            labels_mni.append(l_mni)
     data = np.hstack(data)
     return np.vstack(labels_mni), data, vertices
 
