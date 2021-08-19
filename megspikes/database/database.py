@@ -386,7 +386,7 @@ class Database():
             dims=("source", "iz_prediction_timepoint"),
             coords={
                 "source": source,
-                "time_evoked": iz_prediction_timepoints_coords
+                "iz_prediction_timepoint": iz_prediction_timepoints_coords
                 },
             name="iz_prediction")
 
@@ -493,8 +493,8 @@ def select_sensors(ds: xr.Dataset, sensors: str,
 
 
 def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
-                                selection: Union[Dict[Any, str], None] = None
-                                ) -> np.ndarray:
+                                selection: Union[Dict[Any, str], None] = None,
+                                dtype: type = np.float64) -> np.ndarray:
     if not isinstance(da_name, str):
         raise RuntimeError(f"{da_name} has type {type(da_name)}")
     assert da_name in ds.data_vars, (
@@ -513,7 +513,7 @@ def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
         else:
             assert data.any(), (
                 f"{da_name} values are all zeros")
-    return data
+    return dtype(data)
 
 
 def check_and_write_to_dataset(ds: xr.Dataset, da_name: str,

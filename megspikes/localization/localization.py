@@ -428,7 +428,8 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
         clusters = check_and_read_from_dataset(
             X[0], 'spike', dict(detection_property='cluster'))
         sensors = check_and_read_from_dataset(
-            X[0], 'cluster_properties', dict(cluster_property='sensors'))
+            X[0], 'cluster_properties', dict(cluster_property='sensors'),
+            dtype=np.int64)
 
         all_clusters = np.int32(np.unique(clusters[detection_mask]))
         clusters_properties = np.zeros((len(all_clusters), 3))
@@ -504,25 +505,43 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                  smoothing_steps_one_cluster: int = 3,
                  smoothing_steps_final: int = 10,
                  amplitude_threshold: float = 0.5,
-                 min_sources: int = 10):
-        self.setup_fwd(case, sensors)
+                 min_sources: int = 10,
+                 spacing='ico5'):
+        self.setup_fwd(case, sensors, spacing=spacing)
         self.smoothing_steps_one_cluster = smoothing_steps_one_cluster
         self.smoothing_steps_final = smoothing_steps_final
         self.amplitude_threshold = amplitude_threshold
         self.min_sources = min_sources
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
-        n_clusters = len(X[0].cluster_id)
-        for time in ['peak', 'slope']:
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        clusters = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['cluster_id']),
+            dtype=np.int64)
+        sensors = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['sensors']),
+            dtype=np.int64)
+        baseline = check_and_read_from_dataset(
+            X[0], 'cluster_properties',
+            dict(cluster_property=['time_baseline']), dtype=np.int64)
+        slope = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['time_slope']),
+            dtype=np.int64)
+        peak = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['time_peak']),
+            dtype=np.int64)
+        stc_clusters = check_and_read_from_dataset(
+            X[0], 'mne_localization')
+
+        n_clusters = len(clusters)
+        for slope_time, slope_name in zip([baseline, slope, peak],
+                                          ['baseline', 'slope', 'peak']):
             clusters_stcs = []
-            for cluster in X[0].cluster_id.values:
-                # Select slope timepoint from database
-                slope_time = X[0]['clusters_lib_slope_timepoints'].loc[
-                    cluster, time].values
-                slope_time = np.int64(slope_time)
-                # Select SourceEstimate data from Datbase
-                stc_cluster = X[0][
-                    'clusters_lib_sources'].loc[cluster].values[:, slope_time]
+            for cluster, sens in zip(clusters, sensors):
+                stc_cluster = stc_clusters[
+                    sens, cluster, :, slope_time].squeeze()
                 # Binarize SourceEstimate
                 stc_cluster_bin = self.binarize_stc(
                     stc_cluster, self.fwd, self.smoothing_steps_one_cluster,
@@ -536,9 +555,8 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
             iz_prediciton = self.binarize_stc(
                 iz_prediciton, self.fwd, self.smoothing_steps_final,
                 self.amplitude_threshold, self.min_sources)
-            X[0]["iz_predictions"].loc[f'alphacsc_{time}', :] = iz_prediciton
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+            check_and_write_to_dataset(
+                X[0], 'iz_prediction', iz_prediciton, dict(
+                    iz_prediction_timepoint=slope_name))
         logging.info("Irritative zone prediction using clusters is finished.")
         return X
