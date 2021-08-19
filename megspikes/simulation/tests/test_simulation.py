@@ -18,6 +18,7 @@ def sample_path():
 def test_simulation(sample_path):
     sim = Simulation(sample_path)
     sim.simulate_dataset()
+    assert len(sim.clusters) == len(sim.detections)
 
 
 @pytest.mark.parametrize(

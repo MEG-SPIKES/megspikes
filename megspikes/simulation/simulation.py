@@ -19,15 +19,55 @@ mne.set_log_level("ERROR")
 
 class Simulation:
     def __init__(self, root_dir_path: Union[Path, str] = None,
-                 time_between_events: int = 1, atlas: str = 'aparc.a2009s'):
+                 time_between_events: int = 1,
+                 atlas: str = 'aparc.a2009s',
+                 n_events: List[int] = [15, 0, 0, 0],
+                 sfreq: float = 1000.,
+                 simultaneous: List[bool] = [False]*4,
+                 event_locations: List[str] = [
+                     'G_temp_sup-G_T_transv-rh', 'G_temp_sup-G_T_transv-lh',
+                     'S_subparietal-rh', 'S_subparietal-lh'],
+                 event_activations: List[float] = [120, 120, 120, 120]):
+        """Create Simulation object.
+
+        Parameters
+        ----------
+        root_dir_path : Union[Path, str], optional
+            path to save simulation, by default None
+        time_between_events : int, optional
+            time between spikes in seconds, by default 1
+        atlas : str, optional
+            anatomical atlas to read labels, by default 'aparc.a2009s'
+            aparc.a2009s: https://europepmc.org/article/PMC/2937159
+        n_events : List[int], optional
+            Number of the events for each spike shape, by default [15, 0, 0, 0]
+        sfreq : float, optional
+            sample frequency, by default 1000.
+        simultaneous : List[bool], optional
+            Controls whether the next event is added simultaneously with the
+            previous one. For example, if True for event 1, then events 1 and 2
+            have the same timestamps., by default [False]*4
+        event_locations : List[str], optional
+            List of labels from the selected atlas,
+            by default [ 'G_temp_sup-G_T_transv-rh','G_temp_sup-G_T_transv-lh',
+            'S_subparietal-rh', 'S_subparietal-lh']
+        event_activations : List[float], optional
+            List of each location activation in nAm,
+            by default [120, 120, 120, 120]
+        """
         if isinstance(root_dir_path, (str, Path)):
             if Path(root_dir_path).is_dir():
                 self.root = Path(root_dir_path)
         else:
             self.root = Path(op.dirname(__file__))
         self.time_between_events = time_between_events
-        # SEE: https://europepmc.org/article/PMC/2937159
         self.atlas = atlas
+        self.n_events = n_events
+        self.simultaneous = simultaneous
+        self.sfreq = sfreq
+        self.event_locations = event_locations
+        self.event_activations = event_activations
+        self.events = self._prepare_events(n_events, simultaneous, sfreq=sfreq)
 
         # path to the data reqired for the simulation
         self.spikes_file = Path(op.dirname(__file__)) / 'data' / 'spikes.npy'
@@ -51,10 +91,10 @@ class Simulation:
 
         # label, activation (nAm)
         self.activations = {
-            'spike_shape_1': [('G_temp_sup-G_T_transv-rh', 120)],
-            'spike_shape_2': [('S_subparietal-rh', 120)],
-            'spike_shape_3': [('S_subparietal-lh', 120)],
-            'spike_shape_4': [('S_subparietal-lh', 120)]
+            'spike_shape_1': [(event_locations[0], event_activations[0])],
+            'spike_shape_2': [(event_locations[1], event_activations[1])],
+            'spike_shape_3': [(event_locations[2], event_activations[2])],
+            'spike_shape_4': [(event_locations[3], event_activations[3])]
         }
 
         # Set approximate peak times for each spike in self.spike_shapes
@@ -62,42 +102,63 @@ class Simulation:
         # Absolute maximum of the spike timeseries to estimate SNR
         self.max_times = [np.argmax(np.abs(s)) for s in self.spike_shapes]
 
-    def simulate_dataset(self, n_events: List[int] = [15, 0, 0, 0],
-                         simultaneous: List[bool] = [False]*4,
-                         sfreq: float = 1000., noise_scaler: float = 1.):
+    @property
+    def detections(self):
+        return np.int32(self.spikes * self.sfreq)
+
+    @property
+    def clusters(self):
+        return np.int32(self.events[:, 2])
+
+    @property
+    def sample_freq(self):
+        return self.sfreq
+
+    @property
+    def case_root_dir(self):
+        return self.root
+
+    @property
+    def peaks(self):
+        return self.peak_times
+
+    def __repr__(self) -> str:
+        s = f"{self.__class__.__name__}\n\n"
+        s += f"Spike shapes file location: {self.spikes_file}\n"
+        s += f"Simulated case parent folder: {self.root}\n"
+        s += "Events ids: "
+        s += str(self.event_id) + "\n"
+        s += "Number of each event type: "
+        s += ', '.join([str(i) for i in self.n_events]) + "\n"
+        s += "Events locations: "
+        s += ', '.join(self.event_locations) + "\n"
+        s += "Events activations: "
+        s += ', '.join([str(i) for i in self.event_activations]) + "\n"
+        return s
+
+    def simulate_dataset(self, noise_scaler: float = 1.):
         """Simulate raw fif data and case file structure.
 
         Parameters
         ----------
-        n_events : List[int], optional
-            Number of the events for each spike shape, by default [15, 0, 0, 0]
-        simultaneous : List[bool], optional
-            Controls whether the next event is added simultaneously with the
-            previous one. For example, if True for event 1, then events 1 and 2
-            have the same timestamps., by default [False]*4
-        sfreq : float, optional
-            sample frequency, by default 1000.
         noise_scaler : float, optional
             Amplitude of the noise added to the data, by default 1.
         """
-        self.n_events = n_events
-        self.simultaneous = simultaneous
-        self.sfreq = sfreq
         self.noise_scaler = noise_scaler
 
         info, fwd, raw = self._read_mne_sample_dataset()
-        events = self._prepare_events(n_events, simultaneous, sfreq=sfreq)
-        source_simulator = self._simulate_sources(events, fwd['src'], 1/sfreq)
+        source_simulator = self._simulate_sources(
+            self.events, fwd['src'], 1/self.sfreq)
         simulation = self._simulate_raw(
             source_simulator, fwd, info, raw, noise_scaler)
-        simulation, spikes = self._add_annotation(simulation, events, sfreq)
+        simulation, spikes = self._add_annotation(
+            simulation, self.events, self.sfreq)
         self.spikes = spikes  # seconds
         self._simulate_data_structure(simulation)
         self._simulate_case()
         # Save resection
         self._labels_to_resection(
             self.fresection, self.case_manager.fwd['ico5'])
-        self.events = events
         self.raw_simulation = simulation
 
     def _read_mne_sample_dataset(self) -> Tuple[mne.Info, mne.Forward,
@@ -272,9 +333,6 @@ class Simulation:
         stc = mne.SourceEstimate(
             data, vertices, tmin=0, tstep=0.001, subject=self.mne_subject)
         stc_to_nifti(stc, fwd, self.mne_subject, self.subjects_dir, fsave)
-
-    def save_manual_detections(self):
-        pass
 
 
 def simulate_raw_fast(seconds: int = 2, sampling_freq: float = 200.,
