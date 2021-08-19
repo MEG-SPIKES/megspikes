@@ -1,6 +1,5 @@
 from typing import List
 
-import numpy as np
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from megspikes.casemanager.casemanager import CaseManager
@@ -17,7 +16,7 @@ from megspikes.localization.localization import (
 from megspikes.utils import PrepareData, ToFinish
 
 
-def aspike_alphacsc_pipeline(case: CaseManager,
+def aspire_alphacsc_pipeline(case: CaseManager,
                              database: Database,
                              n_ica_components: int = 20,
                              resample: float = 200.,
@@ -97,3 +96,4 @@ def aspike_alphacsc_pipeline(case: CaseManager,
         ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
     return pipe
+

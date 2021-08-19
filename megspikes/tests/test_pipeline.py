@@ -2,7 +2,7 @@ import os.path as op
 from pathlib import Path
 
 import pytest
-from megspikes.pipeline import aspike_alphacsc_pipeline
+from megspikes.pipeline import aspire_alphacsc_pipeline
 from megspikes.database.database import read_meg_info_for_database
 
 
@@ -31,7 +31,7 @@ def test_aspire_alphacsc_pipeline(simulation, aspire_alphacsc_empty_dataset):
         simulation.case_manager.fwd['ico5'])
     dataset.to_netcdf(simulation.case_manager.dataset)  # save empty dataset
 
-    pipe = aspike_alphacsc_pipeline(
+    pipe = aspire_alphacsc_pipeline(
         simulation.case_manager, db, n_ica_components=n_ica_components,
         resample=resample, n_ica_peaks=n_ica_peaks, n_atoms=n_atoms,
         z_hat_threshold=z_hat_threshold,
