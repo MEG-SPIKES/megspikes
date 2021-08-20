@@ -499,6 +499,29 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
         return epochs.average()
 
 
+class ForwardToMNI(Localization, BaseEstimator, TransformerMixin):
+    """Save MNI coordinates of all Forward model sources.
+    """
+    def __init__(self, case: CaseManager, spacing='ico5'):
+        self.setup_fwd(case, sensors=True, spacing=spacing)
+        self.spacing = spacing
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        fwd_source_coords = []
+        for hemi in [0, 1]:
+            hemi_mni = mne.vertex_to_mni(
+                self.fwd['src'][hemi]['vertno'], hemis=hemi,
+                subject=self.case_name, subjects_dir=self.freesurfer_dir)
+            fwd_source_coords.append(hemi_mni)
+        fwd_source_coords = np.vstack(fwd_source_coords)
+        check_and_write_to_dataset(
+            X[0], 'fwd_mni_coordinates', fwd_source_coords)
+        return X
+
+
 class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager,
                  sensors: Union[str, bool] = True,

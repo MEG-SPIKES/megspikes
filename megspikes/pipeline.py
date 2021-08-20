@@ -12,7 +12,7 @@ from megspikes.detection.detection import (AspireAlphacscRunsMerging,
                                            DecompositionICA, ManualDetections,
                                            PeakDetection, SelectAlphacscEvents)
 from megspikes.localization.localization import (
-    AlphaCSCComponentsLocalization, ClustersLocalization,
+    AlphaCSCComponentsLocalization, ClustersLocalization, ForwardToMNI,
     ICAComponentsLocalization, PeakLocalization, PredictIZClusters)
 from megspikes.utils import PrepareData, ToFinish
 
@@ -93,6 +93,7 @@ def aspire_alphacsc_pipeline(case: CaseManager,
             database=database,
             runs=runs, n_atoms=n_atoms)),
         ('localize_clusters', ClustersLocalization(case=case)),
+        ('convert_forward_to_mni', ForwardToMNI(case=case)),
         ('predict_IZ', PredictIZClusters(case=case)),
         ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
@@ -105,6 +106,7 @@ def manual_pipeline(case: CaseManager, database: Database,
         ('make_clusters_library', ManualDetections(
             case.cluster_dataset, database, detections, clusters)),
         ('localize_clusters', ClustersLocalization(case=case)),
+        ('convert_forward_to_mni', ForwardToMNI(case=case)),
         ('predict_IZ', PredictIZClusters(case=case)),
         ('save_dataset', SaveDataset(dataset=case.manual_cluster_dataset))
     ])

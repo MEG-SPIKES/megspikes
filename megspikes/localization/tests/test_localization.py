@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from megspikes.database.database import select_sensors
 from megspikes.localization.localization import (
-    AlphaCSCComponentsLocalization, ClustersLocalization,
+    AlphaCSCComponentsLocalization, ClustersLocalization, ForwardToMNI,
     ICAComponentsLocalization, Localization, PeakLocalization,
     PredictIZClusters)
 from megspikes.utils import PrepareData
@@ -121,6 +121,8 @@ def test_fast_rap_music_details(simulation):
 def test_clusters_localization(clusters_random_dataset, simulation):
     dataset = clusters_random_dataset
     case = simulation.case_manager
+    src_to_mni = ForwardToMNI(case=case)
+    _ = src_to_mni.fit_transform((dataset, simulation.raw_simulation))
     localizer = ClustersLocalization(case=case)
     results = localizer.fit_transform((dataset, simulation.raw_simulation))
     izpredictor = PredictIZClusters(case=case)

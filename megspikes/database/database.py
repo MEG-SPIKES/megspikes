@@ -390,6 +390,19 @@ class Database():
                 },
             name="iz_prediction")
 
+        fwd_mni_coordinates = xr.DataArray(
+            data=np.zeros(
+                (len(source), 3)),
+            dims=("source", "mni_coordinate"),
+            coords={
+                "source": source,
+                "mni_coordinate": ['x', 'y', 'z']
+                },
+            attrs={
+                "mni_coordinate_units": "mm"
+            },
+            name="fwd_mni_coordinates")
+
         # ---- Create dataset ---- #
 
         ds = xr.merge([
@@ -398,7 +411,8 @@ class Database():
             cluster_properties,
             mne_localization,
             evoked,
-            iz_prediction
+            iz_prediction,
+            fwd_mni_coordinates
             ])
         return ds
 
