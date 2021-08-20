@@ -1,5 +1,11 @@
+from typing import Any, Tuple
+
 import numpy as np
+import xarray as xr
 from scipy.spatial import ConvexHull, Delaunay
+from sklearn.base import BaseEstimator, TransformerMixin
+
+from ..database.database import check_and_read_from_dataset
 
 
 def distance_to_resection_hull(resection_mni_points: np.ndarray,
@@ -20,6 +26,8 @@ def distance_to_resection_hull(resection_mni_points: np.ndarray,
     int
         distance in mm; negative means inside the hull
     """
+    assert len(resection_mni_points.shape) == 2, "Wrong input shape"
+    assert len(detection_mni_points.shape) == 2, "Wrong input shape"
     chull = ConvexHull(resection_mni_points)
     dhull = Delaunay(resection_mni_points)
     hvertices = resection_mni_points[chull.vertices, :]
@@ -34,3 +42,23 @@ def distance_to_resection_hull(resection_mni_points: np.ndarray,
             distance += nearest_vert
     distance /= detection_mni_points.shape[0]
     return round(distance, 0)
+
+
+class ScoreIZPrediction(BaseEstimator, TransformerMixin):
+    def __init__(self) -> None:
+        pass
+
+    def fit(self, X: xr.Dataset, Any, y=None):
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        return X
+
+    def score(self, X: xr.Dataset, y: np.ndarray, slope_point: str = "peak"):
+        self.detection_stc = check_and_read_from_dataset(
+            X, 'iz_prediction',
+            dict(iz_prediction_timepoint=slope_point))
+        self.fwd_mni = check_and_read_from_dataset(
+            X, 'fwd_mni_coordinates')
+        self.detection_mni = self.fwd_mni[self.detection_stc > 0]
+        return distance_to_resection_hull(y, self.detection_mni)
