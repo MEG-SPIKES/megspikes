@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Tuple, Union
+from typing import List, Tuple, Union
 
 import mne
 from mne.source_space import _check_mri
@@ -13,13 +13,53 @@ from mne.transforms import invert_transform, apply_trans
 from mne.fixes import _get_img_fdata
 import nibabel as nb
 import numpy as np
-import xarray as xr
 from scipy import signal
 from scipy.ndimage.filters import gaussian_filter
 from scipy.spatial import Delaunay
 from sklearn.base import BaseEstimator, TransformerMixin
 
 mne.set_log_level("ERROR")
+
+
+def prepare_data(data: mne.io.Raw,
+                 meg: Union[str, bool],
+                 filtering: Union[None, List[float]],
+                 resample: Union[None, float],
+                 alpha_notch: Union[None, float]
+                 ) -> mne.io.Raw:
+    """Preprocess raw MEG data for analysis.
+
+    Parameters
+    ----------
+    data : mne.io.Raw
+        raw meg fif data
+    meg : Union[str, bool]
+        'grad', 'mag' or True
+    filtering : Union[None, List[float]]
+        List[highpass, lowpass, notch]
+    resample : Union[None, float]
+        frequency for the resampling in Hz
+    alpha_notch : Union[None, float]
+        alpha frequency
+
+    Returns
+    -------
+    mne.io.Raw
+        preprocessed raw data
+    """
+    data.pick_types(
+        meg=meg, eeg=False, stim=False, eog=False, ecg=False,
+        emg=False, misc=False)
+    if filtering is not None:
+        data.filter(filtering[0], filtering[1])
+        data.notch_filter(filtering[2])
+
+    if alpha_notch:
+        data.notch_filter(alpha_notch, trans_bandwidth=2.0)
+
+    if resample:
+        data = data.resample(resample, npad="auto")
+    return data
 
 
 class PrepareData(BaseEstimator, TransformerMixin):
@@ -47,6 +87,8 @@ class PrepareData(BaseEstimator, TransformerMixin):
     mne.io.Raw
 
     """
+    prepare_data = staticmethod(prepare_data)
+
     def __init__(self,
                  data_file: Union[str, Path, None] = None,
                  sensors: Union[str, bool] = True,
@@ -59,33 +101,19 @@ class PrepareData(BaseEstimator, TransformerMixin):
         self.resample = resample
         self.alpha_notch = alpha_notch
 
-    def fit(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]], y=None):
+    def fit(self, X, y=None):
         return self
 
-    def transform(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]],
-                  ) -> Tuple[Any, mne.io.Raw]:
-        if isinstance(X, tuple):
-            data = self._prepare_data(data=X[1])
-            return (X[0], data)
-        else:
-            data = self._prepare_data(data=None)
-            return (X, data)
-
-    def _prepare_data(self, data: Union[None, mne.io.Raw]) -> mne.io.Raw:
-        if data is None:
+    def transform(self, X) -> mne.io.Raw:
+        if isinstance(X, str) or isinstance(X, Path):
+            data = mne.io.read_raw_fif(X, preload=True)
+        elif X is None:
             data = mne.io.read_raw_fif(self.data_file, preload=True)
-        data.pick_types(
-            meg=self.sensors, eeg=False, stim=False, eog=False, ecg=False,
-            emg=False, misc=False)
-        if self.filtering is not None:
-            data.filter(self.filtering[0], self.filtering[1])
-            data.notch_filter(self.filtering[2])
-
-        if self.alpha_notch:
-            data.notch_filter(self.alpha_notch, trans_bandwidth=2.0)
-
-        if self.resample:
-            data = data.resample(self.resample, npad="auto")
+        else:
+            data = X
+        data = self.prepare_data(
+            data=data, meg=self.sensors, filtering=self.filtering,
+            alpha_notch=self.alpha_notch, resample=self.resample)
         return data
 
 

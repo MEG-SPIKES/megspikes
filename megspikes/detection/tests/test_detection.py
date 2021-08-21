@@ -48,7 +48,7 @@ def test_ica_decomposition(aspire_alphacsc_random_dataset,
     ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
 
     decomposition = DecompositionICA(n_components=n_ica_comp)
-    (ds_channles, data) = pd.fit_transform(ds_channles)
+    data = pd.fit_transform(None)
     (ds_channles, data) = decomposition.fit_transform((ds_channles, data))
     assert ds_channles.ica_sources.loc[:, :].any()
     assert ds_channles.ica_components.loc[:, :].any()
@@ -159,7 +159,7 @@ def test_alphacsc_decomposition(simulation, aspire_alphacsc_random_dataset,
     ds_channles.detection_properties.loc[
         dict(detection_property='selected_for_alphacsc')][
             [500, 600, 700]] = 1
-    (ds_channles, data) = pd.fit_transform(ds_channles)
+    data = pd.fit_transform(None)
     alpha = DecompositionAlphaCSC(n_atoms=len(dataset.alphacsc_atom.values))
     results, _ = alpha.fit_transform((ds_channles, data))
     # TODO: add tests
@@ -184,7 +184,7 @@ def test_alphacsc_events_selection(aspire_alphacsc_random_dataset, simulation,
     ds_channles.alphacsc_z_hat[:, z_peaks] = 20
     sel = SelectAlphacscEvents(
         sensors=sensors, n_atoms=len(dataset.alphacsc_atom.values))
-    (ds_channles, data) = pd.fit_transform(ds_channles)
+    data = pd.fit_transform(None)
     sel.fit_transform((ds_channles, data))
 
 

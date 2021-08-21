@@ -50,10 +50,9 @@ def test_components_localization(aspire_alphacsc_random_dataset, simulation):
     run = 0
     sensors = 'grad'
     case = simulation.case_manager
-    prep_data = PrepareData(sensors=sensors)
+    pd = PrepareData(sensors=sensors)
     ds_grad, sel = select_sensors(dataset, sensors, run)
-    (ds_grad, raw) = prep_data.fit_transform(
-        (ds_grad, simulation.raw_simulation))
+    raw = pd.fit_transform(simulation.raw_simulation)
     cl = ICAComponentsLocalization(case=case, sensors=sensors)
     alphacl = AlphaCSCComponentsLocalization(case=case, sensors=sensors)
     (ds_grad, raw) = cl.fit_transform((ds_grad, raw))
@@ -67,7 +66,7 @@ def test_fast_rap_music(simulation):
     pk = PeakLocalization(case=case, sensors=sensors)
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
-    _, raw = pd.fit_transform(None)
+    raw = pd.fit_transform(simulation.raw_simulation)
     data = raw.get_data()
     timestamps = np.array([100, 200, 300], dtype=np.int32)
     mni_coords, subcorr = pk.fast_music(
