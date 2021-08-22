@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 from megspikes.pipeline import (aspire_alphacsc_pipeline,
-                                iz_prediction_pipeline, manual_pipeline)
+                                iz_prediction_pipeline, manual_pipeline,
+                                update_default_params)
 
 
 @pytest.fixture(scope="module", name='test_sample_path')
@@ -17,20 +18,19 @@ def fixture_data():
 @pytest.mark.happy
 @pytest.mark.slow
 def test_aspire_alphacsc_pipeline(simulation):
-    n_ica_components = 5
-    n_ica_peaks = 50
-    resample = 200.
-    n_atoms = 2  # FIXME: one atom cause bugs
-    z_hat_threshold = 1.
-    z_hat_threshold_min = 0.1
-    runs = [0, 1]
-
+    params = {
+        'n_ica_components': 5,
+        'n_runs': 2,
+        'runs': [0, 1],
+        'n_atoms': 2,  # FIXME: one atom cause bugs
+        'PeakDetection': {'width': 2},
+        'CleanDetections': {'n_cleaned_peaks': 50},
+        'SelectAlphacscEvents': {
+            'z_hat_threshold': 1.,
+            'z_hat_threshold_min': 0.1}
+    }
     pipe = aspire_alphacsc_pipeline(
-        simulation.case_manager, n_ica_components=n_ica_components,
-        resample=resample, n_ica_peaks=n_ica_peaks, n_atoms=n_atoms,
-        z_hat_threshold=z_hat_threshold,
-        z_hat_threshold_min=z_hat_threshold_min,
-        runs=runs)
+        simulation.case_manager, update_params=params)
     _ = pipe.fit_transform(None)
 
 
@@ -48,3 +48,41 @@ def test_manual_pipeline(simulation):
     pipe = manual_pipeline(simulation.case_manager, simulation.detections,
                            simulation.clusters - 1)
     _ = pipe.fit_transform((None, simulation.raw_simulation.copy()))
+
+
+def test_update_default_params():
+    params = {
+        'param_global': 1,
+        'param_global2': 1,
+        'param_local': {
+            'b': 5,
+            'param_global': 1},
+        'param_local_local': {
+            'param_local1': {
+                'c': 6,
+                'param_global': 1}}
+    }
+
+    updates = {
+        'param_global': 2,
+        'param_local': {
+            'b': 6},
+        'param_local_local': {
+            'param_local1': {
+                'c': 0}}
+    }
+
+    result = {
+        'param_global': 2,
+        'param_global2': 1,
+        'param_local': {
+            'b': 6,
+            'param_global': 2},
+        'param_local_local': {
+            'param_local1': {
+                'c': 0,
+                'param_global': 2}}
+    }
+
+    updated_params = update_default_params(params, updates)
+    assert updated_params == result

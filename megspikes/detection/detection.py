@@ -21,12 +21,12 @@ mne.set_log_level("ERROR")
 
 
 class DecompositionICA(TransformerMixin, BaseEstimator):
-    def __init__(self, n_components: int = 20):
-        self.n_components = n_components
+    def __init__(self, n_ica_components: int = 20):
+        self.n_ica_components = n_ica_components
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         self.ica = mne.preprocessing.ICA(
-            n_components=self.n_components, random_state=97)
+            n_components=self.n_ica_components, random_state=97)
         self.ica.fit(X[1])
         return self
 
@@ -59,7 +59,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
     gof : float, optional
         components dipole fitting threshold, by default 80.
     gof_abs : float, optional
-        absolute dippole fitting threshold, by default 95.
+        absolute dipole fitting threshold, by default 95.
     kurtosis_min : float, optional
         minimal kurtosis score of the ICA component, by default 1.
     kurtosis_max : float, optional
@@ -68,8 +68,9 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         run number. NOTE: starting from 0, by default 0
     n_runs : int, optional
         all runs in the analysis, by default 4
+    n_components_if_nothing_else : int, optional
+        select components by gof if no components selected
     """
-
     def __init__(self,
                  n_by_var: int = 10,
                  gof: float = 80.,
@@ -193,23 +194,25 @@ class PeakDetection(TransformerMixin, BaseEstimator):
     sfreq : int, optional
         sample frequency of the ICA sources, by default 200
     h_filter : float, optional
-        heighpass filter, by default 20.
+        highpass filter, by default 20.
     l_filter : float, optional
         lowpass filter, by default 90
     filter_order : int, optional
-        Filter order, by default 3
+        filter order, by default 3
     prominence : float, optional
-        Amplitude of the peaks to detect. Prominence is decreased automatically
-        if the number of detection is less than n_detections_threshold,
-        by default 7.
+        amplitude of the peaks to detect, by default 7.
+    prominence_min : float, optional
+        prominence is decreased automatically if the number of detection is
+        less than n_detections_threshold and prominence > prominence_min,
+        by default 2.
     wlen : float, optional
-        Refractory window around the detected peak, by default 2000.
+        refractory window around the detected peak, by default 2000.
     rel_height : float, optional
         [description], by default 0.5
     width : float, optional
-        Width of the peak in samples, by default 10.
+        width of the peak in samples, by default 10.
     n_detections_threshold : int, optional
-        Minimal number of the detections, by default 2000
+        minimal number of the detections, by default 2000
     """
     def __init__(self,
                  sign: int = -1,
@@ -218,6 +221,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                  l_filter: float = 90,
                  filter_order: int = 3,
                  prominence: float = 7.,
+                 prominence_min: float = 2.,
                  wlen: float = 2000.,
                  rel_height: float = 0.5,
                  width: float = 10.,
@@ -229,6 +233,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         self.l_filter = l_filter
         self.filter_order = filter_order
         self.prominence = prominence
+        self.prominence_min = prominence_min
         self.wlen = wlen
         self.rel_height = rel_height
         self.width = width
@@ -305,7 +310,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
             # prominence threshold goes down
             if n_detections < self.n_detections_threshold:
                 self.prominence -= 0.5
-                if self.prominence < 2:
+                if self.prominence < self.prominence_min:
                     n_detections = self.n_detections_threshold
                 else:
                     timestamps = np.array([], dtype=np.int64)
@@ -338,7 +343,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
     diff_threshold : float, optional
         refractory period between spikes in s, by default 0.5
     n_spikes : int, optional
-        select N spikes using subcorr value, by default 300
+        select N spikes using subcorr values, by default 300
         This option is used to ensure that there are no more
         than a certain number of detections.
     """
@@ -496,8 +501,8 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
 
     Parameters
     ----------
-    epoch_width_samples : int, optional
-        epochs of events in cropped data width in samples, by default 201.
+    cropped_epochs_width : float, optional
+        epochs of events in cropped data width in seconds, by default 1.
     atom_width : float, optional
         atom width in seconds, by default 0.5
     sfreq : int, optional
@@ -518,7 +523,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
     def __init__(self,
                  sensors: str = 'grad',
                  n_atoms: int = 3,
-                 epoch_width_samples: int = 201,
+                 cropped_epochs_width: int = 1.,
                  atom_width: float = 0.5,
                  sfreq: float = 200.,
                  z_hat_threshold: float = 3.,  # MAD
@@ -532,7 +537,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
                  atoms_selection_min_events: int = 0):
         self.sensors = sensors
         self.n_atoms = n_atoms
-        self.epoch_width_samples = epoch_width_samples
+        self.cropped_epochs_width = cropped_epochs_width
         self.atom_width = atom_width
         self.sfreq = sfreq
         self.z_hat_threshold = z_hat_threshold
@@ -684,9 +689,8 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
         """
 
         border = int(self.window_border)
-        half_event = self.epoch_width_samples // 2
+        half_event = int(self.cropped_epochs_width * self.sfreq) // 2
         half_atom_width = self.atom_width_samples // 2
-        # event_width = self.epoch_width_samples
 
         # estimate z-hat threshold
         z_mad = stats.median_abs_deviation(z_hat[z_hat > 0])

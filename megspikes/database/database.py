@@ -537,13 +537,13 @@ class PrepareAspireAlphacscDataset(BaseEstimator, TransformerMixin):
                  fwd: mne.Forward,
                  atoms_width: float = 1.,
                  n_runs: int = 4,
-                 n_ica_comp: int = 20,
+                 n_ica_components: int = 20,
                  n_atoms: int = 3) -> None:
         self.fif_file = fif_file
         self.fwd = fwd  # ico5
         self.atoms_width = atoms_width
         self.n_runs = n_runs
-        self.n_ica_comp = n_ica_comp
+        self.n_ica_components = n_ica_components
         self.n_atoms = n_atoms
 
     def fit(self, X: mne.io.Raw, y=None):
@@ -553,7 +553,7 @@ class PrepareAspireAlphacscDataset(BaseEstimator, TransformerMixin):
         database = read_meg_info_for_database(self.fif_file, self.fwd)
         ds = database.make_aspire_alphacsc_dataset(
             times=X.times,
-            n_ica_components=self.n_ica_comp,
+            n_ica_components=self.n_ica_components,
             n_atoms=self.n_atoms,
             atom_length=self.atoms_width,
             n_runs=self.n_runs,

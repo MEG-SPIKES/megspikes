@@ -1,0 +1,123 @@
+# NOTE: commented parameters are set dynamically
+n_runs: 4
+runs: [0, 1, 2, 3]
+n_ica_components: 20
+n_atoms: 3
+sfreq: 200.
+
+PrepareData:
+  filtering:
+    - 2. # highpass
+    - 90. # lowpass
+    - 50. # line freq notch
+  resample: 200. # Hz
+  # data_file: CaseManager.fif_file
+  # sensors: grad
+  # alpha_notch: 12.
+
+PrepareAspireAlphacscDataset:
+  atoms_width: 0.5
+  n_runs: 4
+  n_ica_components: 20
+  n_atoms: 3
+  # fif_file: CaseManager.fif_file
+  # fwd: mne.Forward
+
+DecompositionICA:
+  n_ica_components: 20
+
+ICAComponentsLocalization:
+  spacing: oct5
+  # case: CaseManager
+  # sensors: True
+
+ComponentsSelection:
+  n_by_var: 10 # N first components selected by variance
+  gof: 80. # components dipole fitting threshold
+  gof_abs: 95. # absolute dipole fitting threshold
+  kurtosis_min: 1. # minimal kurtosis score of the ICA component
+  kurtosis_max: 10. # maximal kurtosis score of the ICA component
+  n_runs: 4 # all runs in the analysis
+  n_components_if_nothing_else: 7 # select components by gof if no components selected
+  # run: 0 # run number
+
+PeakDetection:
+  sign: -1 # Detect positive or negative peaks. Multiply the data by sign value
+  sfreq: 200. # sample frequency of the ICA sources
+  h_filter: 20. # highpass filter
+  l_filter: 90. # lowpass filter
+  filter_order: 3
+  prominence: 7. # amplitude of the peaks to detect
+  prominence_min: 2. 
+  wlen: 2000. # refractory window around the detected peak
+  rel_height: 0.5
+  width: 10. # width of the peak in samples
+  n_detections_threshold: 2000 # minimal number of the detections
+
+PeakLocalization:
+  spacing: oct5
+  sfreq: 200.
+  window: [-20, 30] # MUSIC window in ms
+  # case: CaseManager
+  # sensors: True
+
+CleanDetections:
+  diff_threshold: 0.5 # refractory period between spikes in s
+  n_cleaned_peaks: 300 # select N spikes using subcorr values
+
+DecompositionAlphaCSC:
+  n_atoms: 3
+  atoms_width: 0.5
+  sfreq: 200.
+  greedy_cdl_kwarg:
+    rank1: yes
+    uv_constraint: separate
+    window: yes
+    unbiased_z_hat: yes
+    D_init: chunk
+    lmbd_max: scaled
+    reg: 0.1
+    n_iter: 100
+    eps: 0.0001
+    solver_z: lgcd
+    solver_z_kwargs: 
+      tol: 0.001
+      max_iter: 100000
+    solver_d: alternate_adaptive
+    solver_d_kwargs:
+      max_iter: 300
+    sort_atoms: yes
+    verbose: 0
+    random_state: 0
+  split_signal_kwarg:
+    n_splits: 5
+    apply_window: yes
+  n_jobs: 1
+
+AlphaCSCComponentsLocalization:
+  spacing: oct5
+  # case: CaseManager
+  # sensors: True
+
+SelectAlphacscEvents:
+  n_atoms: 3
+  cropped_epochs_width: 1. # epochs of events in cropped data width in seconds
+  atom_width: 0.5 # atom width in seconds
+  sfreq: 200. # sample freq
+  z_hat_threshold: 3.  # threshold for z-hat values in MAD
+  z_hat_threshold_min: 1.5
+  window_border: 10 # samples
+  min_n_events: 15
+  atoms_selection_gof: 80. # GOF value threshold
+  allow_lower_gof_grad: 20.
+  atoms_selection_n_events: 10 # n events threshold
+  cross_corr_threshold: 0.85 # cross-correlation on the max channel
+  atoms_selection_min_events: 0
+  # sensors: grad
+
+AspireAlphacscRunsMerging:
+  abs_goodness_threshold: 0.9
+  max_corr: 0.8
+  n_atoms: 3
+  runs: [0, 1, 2, 3]
+  

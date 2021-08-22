@@ -1,6 +1,7 @@
-from typing import List
+import os
 
 import numpy as np
+import yaml
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from .casemanager.casemanager import CaseManager
@@ -18,54 +19,50 @@ from .localization.localization import (AlphaCSCComponentsLocalization,
 from .utils import PrepareData, ToFinish
 
 
+aspire_alphacsc_params = os.path.join(
+    os.path.dirname(__file__), "aspire_alphacsc_default_params.yml")
+
+
 class MakePipeline():
     def __init__(self, case: CaseManager) -> None:
         self.case = case
 
 
-def aspire_alphacsc_pipeline(case: CaseManager,
-                             n_ica_components: int = 20,
-                             resample: float = 200.,
-                             n_ica_peaks: int = 2000,
-                             n_cleaned_peaks: int = 300,
-                             n_atoms: int = 3,
-                             atoms_width: float = 0.5,
-                             z_hat_threshold: float = 3.,
-                             z_hat_threshold_min: float = 1.5,
-                             runs: List[int] = [0, 1, 2, 3]):
+def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
+    with open(aspire_alphacsc_params, 'rt') as f:
+        default_params = yaml.safe_load(f.read())
+    params = update_default_params(default_params, update_params)
+
     pipe_sensors = []
     pipe_runs = []
-    runs = [int(i) for i in runs]
 
     for sens in ['grad', 'mag']:
-        for run in runs:
+        for run in params['runs']:
             pipe_runs.append(
                 (f"run_{run}",
                  Pipeline([
                     ('prepare_data',
                      PrepareData(data_file=case.fif_file, sensors=sens,
-                                 resample=resample)),
+                                 **params['PrepareData'])),
                     ('load_select_dataset',
                      LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('select_ica_components', ComponentsSelection(run=run)),
                     ('detect_ica_peaks',
-                     PeakDetection(prominence=8., width=2.,
-                                   n_detections_threshold=n_ica_peaks)),
+                     PeakDetection(**params['PeakDetection'])),
                     ('peaks_localization',
-                     PeakLocalization(case=case, sensors=sens)),
+                     PeakLocalization(case=case, sensors=sens,
+                                      **params['PeakLocalization'])),
                     ('peaks_cleaning',
-                     CleanDetections(n_cleaned_peaks=n_cleaned_peaks)),
+                     CleanDetections(**params['CleanDetections'])),
                     ('alphacsc_decomposition',
-                     DecompositionAlphaCSC(n_atoms=n_atoms, sfreq=resample,
-                                           atoms_width=atoms_width)),
+                     DecompositionAlphaCSC(**params['DecompositionAlphaCSC'])),
                     ('alphacsc_components_localization',
-                     AlphaCSCComponentsLocalization(case=case, sensors=sens)),
+                     AlphaCSCComponentsLocalization(
+                         case=case, sensors=sens,
+                         **params['AlphaCSCComponentsLocalization'])),
                     ('alphacsc_events_selection',
                      SelectAlphacscEvents(
-                         sensors=sens, n_atoms=n_atoms,
-                         z_hat_threshold=z_hat_threshold,
-                         z_hat_threshold_min=z_hat_threshold_min,
-                         sfreq=resample)),
+                         sensors=sens, **params['SelectAlphacscEvents'])),
                     ('save_dataset',
                      SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('finish_one_run', ToFinish())
@@ -75,13 +72,15 @@ def aspire_alphacsc_pipeline(case: CaseManager,
              Pipeline([
                 ('prepare_data',
                  PrepareData(data_file=case.fif_file, sensors=sens,
-                             resample=resample)),
+                             **params['PrepareData'])),
                 ('load_dataset',
                  LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                 ('ica_decomposition',
-                 DecompositionICA(n_components=n_ica_components)),
+                 DecompositionICA(**params['DecompositionICA'])),
                 ('components_localization',
-                 ICAComponentsLocalization(case=case, sensors=sens)),
+                 ICAComponentsLocalization(
+                     case=case, sensors=sens,
+                     **params['ICAComponentsLocalization'])),
                 ('save_dataset',
                  SaveDataset(dataset=case.dataset, sensors=sens, run=run)),
                 ('finish_one_sensors_before_run', ToFinish()),
@@ -91,22 +90,21 @@ def aspire_alphacsc_pipeline(case: CaseManager,
     pipe = Pipeline([
         ('load_data',
          PrepareData(data_file=case.fif_file, sensors=True,
-                     resample=resample)),
+                     **params['PrepareData'])),
         ('prepare_aspire_alphacsc_dataset',
          PrepareAspireAlphacscDataset(
              fif_file=case.fif_file, fwd=case.fwd['ico5'],
-             atoms_width=atoms_width, n_runs=len(runs),
-             n_ica_comp=n_ica_components, n_atoms=n_atoms)),
-        ('save_empty_dataset',
-            SaveDataset(dataset=case.dataset)),
+             **params['PrepareAspireAlphacscDataset'])),
+        ('save_empty_dataset', SaveDataset(dataset=case.dataset)),
         ('finish_preparation', ToFinish()),
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),  # no output
         ('prepare_data',
          PrepareData(data_file=case.fif_file, sensors=True,
-                     resample=resample)),
+                     **params['PrepareData'])),
         ('load_aspire_alphacsc_dataset',
          LoadDataset(dataset=case.dataset, sensors=None, run=None)),
-        ('merge_atoms', AspireAlphacscRunsMerging(runs=runs, n_atoms=n_atoms)),
+        ('merge_atoms', AspireAlphacscRunsMerging(
+            **params['AspireAlphacscRunsMerging'])),
         ('save_dataset', SaveDataset(dataset=case.dataset))])
     return pipe
 
@@ -137,3 +135,22 @@ def manual_pipeline(case: CaseManager, detections: np.ndarray,
         ('save_dataset', SaveDataset(dataset=case.manual_cluster_dataset))
     ])
     return pipe
+
+
+def update_default_params(defaults: dict, updates: dict):
+    def recursive_update(params, key, val):
+        for k, v in params.items():
+            if isinstance(v, dict):
+                recursive_update(v, key, val)
+            elif key == k:
+                params[k] = val
+        return params
+
+    for key, val in updates.items():
+        assert key in defaults.keys(), (
+            f"{key} is not in the defaults params file")
+        if isinstance(val, dict):
+            update_default_params(defaults[key], val)
+        else:
+            defaults = recursive_update(defaults, key, val)
+    return defaults
