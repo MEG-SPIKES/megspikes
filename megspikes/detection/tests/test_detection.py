@@ -201,20 +201,11 @@ def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
 
 @pytest.mark.happy
 def test_atoms_selection(simulation, aspire_alphacsc_random_dataset):
-    dataset = aspire_alphacsc_random_dataset
-    db = read_meg_info_for_database(
-        simulation.case_manager.fif_file,
-        simulation.case_manager.fwd['ico5'])
-    merging = AspireAlphacscRunsMerging(
-        simulation.case_manager.dataset,
-        simulation.case_manager.cluster_dataset,
-        db,
-        runs=[int(i) for i in dataset.run.values],
-        n_atoms=len(dataset.alphacsc_atom.values))
-    # clusters_empty_dataset.to_netcdf(simulation.case_manager.cluster_dataset)
-    cluster_dataset = merging.fit_transform(
-        (None, simulation.raw_simulation.copy()))
-    del cluster_dataset
+    dataset = aspire_alphacsc_random_dataset.copy(deep=True)
+    merging = AspireAlphacscRunsMerging(runs=[0, 1, 2, 3], n_atoms=2)
+    X = merging.fit_transform(
+        (dataset, simulation.raw_simulation.copy()))
+    del X
 
 
 @pytest.mark.happy

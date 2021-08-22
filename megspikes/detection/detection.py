@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import warnings
-from typing import List, Dict, Tuple, Union, Any
+from typing import List, Dict, Tuple, Union
 
 import mne
 import numpy as np
@@ -827,91 +827,49 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
             Merge atoms if similarity is higher 0.8.
     """
     def __init__(self,
-                 detection_dataset: Union[str, Path],
-                 clusters_dataset: Union[str, Path],
-                 database: Database,
                  abs_goodness_threshold: float = 0.9,
-                 max_corr: float = 0.8, runs: List[int] = [0, 1, 2, 3],
+                 max_corr: float = 0.8,
+                 runs: List[int] = [0, 1, 2, 3],
                  n_atoms: int = 3):
-        self.detection_dataset = detection_dataset
-        self.clusters_dataset = clusters_dataset
-        self.database = database
         self.abs_goodness_threshold = abs_goodness_threshold
         self.max_corr = max_corr
         self.runs = runs
         self.n_atoms = n_atoms
 
-    def fit(self, X: Tuple[Any, mne.io.Raw], y=None):
-        # assert X[0].name == 'aspire_alphacsc_dataset'
-        ds = xr.load_dataset(self.detection_dataset)
-        goodness = check_and_read_from_dataset(
-            ds, 'alphacsc_atoms_properties',
-            dict(alphacsc_atom_property='goodness'))
-        alphacsc_atoms = check_and_read_from_dataset(
-            ds, 'detection_properties',
-            dict(detection_property='alphacsc_atom'))
-        alphacsc_detections = check_and_read_from_dataset(
-            ds, 'detection_properties',
-            dict(detection_property='alphacsc_detection'))
-        v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
-        u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
-        (self.spikes, self.spike_clusters, self.spike_sensors, self.spike_runs,
-         selected, self.selected_clusters, self.selected_sensors,
-         self.selected_runs, self.selected_atoms) = self.select_atoms(
-            alphacsc_detections, alphacsc_atoms, goodness, v_hat, u_hat,
-            self.runs, self.n_atoms, [ds.attrs['grad'], ds.attrs['mag']])
-        self.detection_sfreq = ds.time.attrs['sfreq']
-        check_and_write_to_dataset(
-            ds, 'alphacsc_atoms_properties', selected,
-            dict(alphacsc_atom_property='selected'))
-        ds.to_netcdf(self.detection_dataset, mode='a', format="NETCDF4",
-                     engine="netcdf4")
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        ds = self.database.make_clusters_dataset(
-            X[1].times, len(self.selected_clusters), 1, X[1].info['sfreq'])
-        sfreq = ds.time.attrs['sfreq']
-        spikes_mask = self.spikes > 0
-        spikes_ind = np.where(spikes_mask)[0]
-
-        # resample timestamps
-        resampled_spikes = self.resample_timestamps(
-            spikes_ind, self.detection_sfreq, sfreq)
-
-        spikes = np.zeros_like(ds.time.values)
-        spikes[resampled_spikes] = 1
+        goodness = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_properties',
+            dict(alphacsc_atom_property='goodness'))
+        alphacsc_atoms = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='alphacsc_atom'))
+        alphacsc_detections = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='alphacsc_detection'))
+        v_hat = check_and_read_from_dataset(X[0], 'alphacsc_v_hat')
+        u_hat = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        spikes, clusters, sensors, runs, selected = self.select_atoms(
+            alphacsc_detections, alphacsc_atoms, goodness, v_hat, u_hat,
+            self.runs, self.n_atoms, [X[0].attrs['grad'], X[0].attrs['mag']])
         check_and_write_to_dataset(
-            ds, 'spike', spikes, dict(detection_property='detection'))
-
-        spike_clusters = np.zeros_like(ds.time.values)
-        spike_clusters[resampled_spikes] = self.spike_clusters[spikes_mask]
+            X[0], 'alphacsc_atoms_properties', selected,
+            dict(alphacsc_atom_property='selected'))
         check_and_write_to_dataset(
-            ds, 'spike', spike_clusters, dict(detection_property='cluster'))
-
-        spike_sensors = np.zeros_like(ds.time.values)
-        spike_sensors[resampled_spikes] = self.spike_sensors[spikes_mask]
+            X[0], 'alphacsc_atoms_library_properties', spikes,
+            dict(atoms_library_property='library_detection'))
         check_and_write_to_dataset(
-            ds, 'spike', spike_sensors, dict(detection_property='sensor'))
-
-        spike_runs = np.zeros_like(ds.time.values)
-        spike_runs[resampled_spikes] = self.spike_runs[spikes_mask]
-
+            X[0], 'alphacsc_atoms_library_properties', clusters,
+            dict(atoms_library_property='library_cluster'))
         check_and_write_to_dataset(
-            ds, 'spike', spike_runs, dict(detection_property='run'))
+            X[0], 'alphacsc_atoms_library_properties', sensors,
+            dict(atoms_library_property='library_sensors'))
         check_and_write_to_dataset(
-            ds, 'cluster_properties', self.selected_sensors,
-            dict(cluster_property='sensors'))
-        check_and_write_to_dataset(
-            ds, 'cluster_properties', self.selected_clusters,
-            dict(cluster_property='cluster_id'))
-        check_and_write_to_dataset(
-            ds, 'cluster_properties', self.selected_runs,
-            dict(cluster_property='run'))
-        check_and_write_to_dataset(
-            ds, 'cluster_properties', self.selected_atoms,
-            dict(cluster_property='atom'))
-        return (ds, X[1])
+            X[0], 'alphacsc_atoms_library_properties', runs,
+            dict(atoms_library_property='library_run'))
+        return X
 
     def select_atoms(self,
                      detections: np.ndarray,
@@ -927,10 +885,6 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
         spike_sensors = np.zeros(max(detections.shape))
         spike_runs = np.zeros(max(detections.shape))
         selected = np.zeros_like(goodness)
-        selected_cluster = []
-        selected_sensors = []
-        selected_runs = []
-        selected_atoms = []
 
         goodness_threshold = self._find_goodness_threshold(
             goodness.flatten())
@@ -957,15 +911,8 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
                         spike_runs[detection_mask] = run
                         all_u.append(u_atom)
                         all_v.append(v_atom)
-                        selected_cluster.append(cluster_id)
-                        # 'grad' if sens == 0 else 'mag'
-                        selected_sensors.append(sens)
-                        selected_runs.append(run)
-                        selected_atoms.append(atom)
                         cluster_id += 1
-        return (spikes, spike_clusters, spike_sensors, spike_runs, selected,
-                np.array(selected_cluster), np.array(selected_sensors),
-                np.array(selected_runs), np.array(selected_atoms))
+        return (spikes, spike_clusters, spike_sensors, spike_runs, selected)
 
     def _find_goodness_threshold(self, goodness):
         # Atoms' goodness
