@@ -1,18 +1,20 @@
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Any
 
 import mne
 from mne.source_space import _check_mri
+
 try:
     # mne 0.23
     from mne.source_space import _read_mri_info
 except Exception:
     # mne 0.24
     from mne._freesurfer import _read_mri_info
-from mne.transforms import invert_transform, apply_trans
-from mne.fixes import _get_img_fdata
+
 import nibabel as nb
 import numpy as np
+from mne.fixes import _get_img_fdata
+from mne.transforms import apply_trans, invert_transform
 from scipy import signal
 from scipy.ndimage.filters import gaussian_filter
 from scipy.spatial import Delaunay
@@ -104,13 +106,14 @@ class PrepareData(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
         return self
 
-    def transform(self, X) -> mne.io.Raw:
+    def transform(self, X: Union[Any, mne.io.Raw]) -> mne.io.Raw:
         if isinstance(X, str) or isinstance(X, Path):
             data = mne.io.read_raw_fif(X, preload=True)
-        elif X is None:
-            data = mne.io.read_raw_fif(self.data_file, preload=True)
-        else:
+        elif isinstance(X, mne.io.Raw):
             data = X
+        else:
+            data = mne.io.read_raw_fif(self.data_file, preload=True)
+
         data = self.prepare_data(
             data=data, meg=self.sensors, filtering=self.filtering,
             alpha_notch=self.alpha_notch, resample=self.resample)
@@ -122,8 +125,6 @@ def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
                   sensors: Union[str, bool] = True,):
     '''
     Here we create epochs for events
-    NOTE: !!! if the difference between detections is 1 sample one of the
-    events is skipped
 
     Parameters
     ----------
@@ -143,6 +144,11 @@ def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
     -------
     epochs : MNE epochs
         Preloaded epochs for each detected event.
+
+    Notes
+    -----
+    If the difference between detections is 1 sample one of the
+    events is skipped
 
     '''
     meg_data.load_data()

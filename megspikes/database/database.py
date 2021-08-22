@@ -1,3 +1,4 @@
+import logging
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
@@ -51,11 +52,10 @@ class Database():
         mag_inx = self.channels_by_sensors['mag']
 
         # detected events properties
-        detection_properties = xr.DataArray(
+        detection_property_coord = xr.DataArray(
             data=['ica_detection', 'ica_component', 'mni_x', 'mni_y', 'mni_z',
                   'subcorr', 'selected_for_alphacsc', 'alphacsc_detection',
-                  'alphacsc_atom', 'ica_alphacsc_aligned',
-                  'alphacsc_library_detection', 'alphacsc_library_atom'],
+                  'alphacsc_atom', 'ica_alphacsc_aligned'],
             dims=('detection_property'),
             attrs={
                 'sfreq': sfreq,
@@ -75,7 +75,13 @@ class Database():
                 'ica_alphacsc_aligned': ('Alignment of the ICA components '
                                          'that was done using AlphaCSC')
                 },
-            name='detection_properties')
+            name='detection_property_coord')
+
+        atoms_library_properties = xr.DataArray(
+            data=['library_detection', 'library_cluster',
+                  'library_run', 'library_sensors'],
+            dims=('atoms_library_property'),
+            name='atoms_library_properties')
 
         # ica components
         ica_components_coords = np.arange(n_ica_components)
@@ -127,12 +133,12 @@ class Database():
         detection_properties = xr.DataArray(
             data=np.zeros(
                 (n_runs, len(sensors),
-                 len(detection_properties), meg_data_length)),
+                 len(detection_property_coord), meg_data_length)),
             dims=("run", "sensors", "detection_property", "time"),
             coords={
                 "run": runs,
                 "sensors": sensors,
-                "detection_property": detection_properties,
+                "detection_property": detection_property_coord,
                 "time": t
             },
             name="detection_properties")
@@ -245,6 +251,15 @@ class Database():
             },
             name="alphacsc_atoms_properties")
 
+        alphacsc_atoms_library_properties = xr.DataArray(
+            data=np.zeros((len(atoms_library_properties), meg_data_length)),
+            dims=("atoms_library_property", "time"),
+            coords={
+                "atoms_library_property": atoms_library_properties,
+                "time": t
+            },
+            name="alphacsc_atoms_library_properties")
+
         # ---- Create dataset ---- #
 
         ds = xr.merge([
@@ -257,7 +272,8 @@ class Database():
             alphacsc_z_hat,
             alphacsc_v_hat,
             alphacsc_u_hat,
-            alphacsc_atoms_properties
+            alphacsc_atoms_properties,
+            alphacsc_atoms_library_properties
             ])
         return ds
 
@@ -422,9 +438,132 @@ class Database():
         return ds_subset
 
 
+class PrepareClustersDataset(BaseEstimator, TransformerMixin):
+    def __init__(self, fif_file, fwd,
+                 detection_sfreq: float = 200.,
+                 evoked_length: float = 1.,
+                 ) -> None:
+        self.fif_file = fif_file
+        self.fwd = fwd  # ico5
+        self.evoked_length = evoked_length
+        self.detection_sfreq = detection_sfreq
+
+    def fit(self, X: Tuple[dict, mne.io.Raw], y=None):
+        self.sfreq = X[1].info['sfreq']
+
+        self.spikes = X[0]['spikes']
+        for i in ['spike_clusters', 'spike_sensors', 'spike_runs']:
+            if i in X[0].keys():
+                setattr(self, i, X[0][i])
+            else:
+                setattr(self, i, None)
+
+        if self.spike_clusters is None:
+            logging.info("PrepareClustersDataset: No clusters provided")
+            self.spike_clusters = np.zeros_like(self.spikes, dtype=np.int32)
+        if self.spike_sensors is None:
+            logging.info("PrepareClustersDataset: No sensors provided")
+            self.spike_sensors = np.zeros_like(self.spikes, dtype=np.int32)
+        if self.spike_runs is None:
+            logging.info("PrepareClustersDataset: No spike runs provided")
+            self.spike_runs = np.zeros_like(self.spikes, dtype=np.int32)
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        selected_clusters = np.unique(self.spike_clusters)
+        database = read_meg_info_for_database(self.fif_file, self.fwd)
+        ds = database.make_clusters_dataset(
+            X[1].times, len(selected_clusters), self.evoked_length,
+            self.sfreq)
+
+        # resample timestamps
+        resampled_spikes = self.resample_timestamps(
+            self.spikes, self.detection_sfreq, self.sfreq)
+
+        # write detections
+        spikes = np.zeros_like(ds.time.values)
+        spikes[resampled_spikes] = 1
+        check_and_write_to_dataset(
+            ds, 'spike', spikes, dict(detection_property='detection'))
+        spike_clusters = np.zeros_like(ds.time.values)
+        spike_clusters[resampled_spikes] = self.spike_clusters
+        check_and_write_to_dataset(
+            ds, 'spike', spike_clusters, dict(detection_property='cluster'))
+        spike_sensors = np.zeros_like(ds.time.values)
+        spike_sensors[resampled_spikes] = self.spike_sensors
+        check_and_write_to_dataset(
+            ds, 'spike', spike_sensors, dict(detection_property='sensor'))
+        spike_runs = np.zeros_like(ds.time.values)
+        spike_runs[resampled_spikes] = self.spike_runs
+        check_and_write_to_dataset(
+            ds, 'spike', spike_runs, dict(detection_property='run'))
+
+        # write cluster properties
+        runs = np.zeros_like(selected_clusters)
+        sensors = np.zeros_like(selected_clusters)
+        n_events = np.zeros_like(selected_clusters)
+        for i, cl in enumerate(selected_clusters):
+            cluster_mask = self.spike_clusters == cl
+            assert len(np.unique(self.spike_runs[cluster_mask])) == 1
+            assert len(np.unique(self.spike_sensors[cluster_mask])) == 1
+            assert len(np.unique(self.spike_runs[cluster_mask])) == 1
+            runs[i] = self.spike_runs[cluster_mask][0]
+            sensors[i] = self.spike_sensors[cluster_mask][0]
+            n_events[i] = len(np.where(cluster_mask)[0])
+
+        check_and_write_to_dataset(
+            ds, 'cluster_properties', selected_clusters,
+            dict(cluster_property='cluster_id'))
+        check_and_write_to_dataset(
+            ds, 'cluster_properties', runs,
+            dict(cluster_property='run'))
+        check_and_write_to_dataset(
+            ds, 'cluster_properties', sensors,
+            dict(cluster_property='sensors'))
+        check_and_write_to_dataset(
+            ds, 'cluster_properties', n_events,
+            dict(cluster_property='n_events'))
+        return (ds, X[1])
+
+    def resample_timestamps(self, timestamps: np.ndarray,
+                            from_sfreq: float = 200.,
+                            to_sfreq: float = 1000.) -> np.ndarray:
+        return np.int32((timestamps / from_sfreq) * to_sfreq)
+
+
+class PrepareAspireAlphacscDataset(BaseEstimator, TransformerMixin):
+    def __init__(self,
+                 fif_file: Union[str, Path],
+                 fwd: mne.Forward,
+                 atoms_width: float = 1.,
+                 n_runs: int = 4,
+                 n_ica_comp: int = 20,
+                 n_atoms: int = 3) -> None:
+        self.fif_file = fif_file
+        self.fwd = fwd  # ico5
+        self.atoms_width = atoms_width
+        self.n_runs = n_runs
+        self.n_ica_comp = n_ica_comp
+        self.n_atoms = n_atoms
+
+    def fit(self, X: mne.io.Raw, y=None):
+        return self
+
+    def transform(self, X: mne.io.Raw) -> Tuple[xr.Dataset, mne.io.Raw]:
+        database = read_meg_info_for_database(self.fif_file, self.fwd)
+        ds = database.make_aspire_alphacsc_dataset(
+            times=X.times,
+            n_ica_components=self.n_ica_comp,
+            n_atoms=self.n_atoms,
+            atom_length=self.atoms_width,
+            n_runs=self.n_runs,
+            sfreq=X.info['sfreq'])
+        return (ds, X)
+
+
 class LoadDataset(TransformerMixin, BaseEstimator):
-    def __init__(self, dataset: Union[str, Path], sensors: str,
-                 run: int) -> None:
+    def __init__(self, dataset: Union[str, Path], sensors: Union[str, None],
+                 run: Union[int, None]) -> None:
         self.dataset = dataset
         self.sensors = sensors
         self.run = run
@@ -433,9 +572,17 @@ class LoadDataset(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, Any]:
-        ds = xr.load_dataset(self.dataset)
-        ds_channels, _ = select_sensors(ds, self.sensors, self.run)
-        return (ds_channels, X[1])
+        full_ds = xr.load_dataset(self.dataset)
+        if (self.sensors is not None) & (self.run is not None):
+            ds, _ = select_sensors(full_ds, self.sensors, self.run)
+        else:
+            ds = full_ds
+        if isinstance(X, Tuple):
+            return (ds, X[1])
+        elif isinstance(X, mne.io.Raw):
+            return (ds, X)
+        else:
+            raise RuntimeError("LoadDataset: Wrong input")
 
 
 class SaveDataset(TransformerMixin, BaseEstimator):

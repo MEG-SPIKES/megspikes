@@ -943,11 +943,6 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
         else:
             return True
 
-    def resample_timestamps(self, timestamps: np.ndarray,
-                            from_sfreq: float = 200.,
-                            to_sfreq: float = 1000.) -> np.ndarray:
-        return np.int32((timestamps / from_sfreq) * to_sfreq)
-
 
 class ManualDetections(TransformerMixin, BaseEstimator):
     """Convert manual detections to clusters dataset.

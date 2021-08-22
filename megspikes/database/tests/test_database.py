@@ -4,7 +4,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from megspikes.database.database import (Database, LoadDataset, SaveDataset,
+from megspikes.database.database import (Database, LoadDataset,
+                                         PrepareAspireAlphacscDataset,
+                                         PrepareClustersDataset, SaveDataset,
                                          check_and_read_from_dataset,
                                          check_and_write_to_dataset,
                                          read_meg_info_for_database,
@@ -108,3 +110,32 @@ def test_database(simulation):
         dict(ica_component_property="kurtosis"))
     assert (ds_mag.ica_component_properties.loc[
         dict(ica_component_property="kurtosis")].values == 9).all()
+
+
+def test_prepare_clusters_dataset(simulation):
+    raw = simulation.raw_simulation.copy()
+    case = simulation.case_manager
+    pcd = PrepareClustersDataset(case.fif_file, case.fwd['ico5'], 1000)
+    atoms_lib = {'spikes': simulation.detections}
+    ds, _ = pcd.fit_transform((atoms_lib, raw))
+
+
+@pytest.mark.happy
+@pytest.mark.parametrize(
+    "atoms_width,n_runs,n_ica_comp,n_atoms",
+    [(1., 2, 5, 3),
+     (0.5, 2, 5, 3),
+     (2., 1, 5, 1),
+     (0.1, 1, 20, 5)])
+def test_prepare_aspire_alphacsc_dataset(simulation, atoms_width, n_runs,
+                                         n_ica_comp, n_atoms):
+    raw = simulation.raw_simulation.copy()
+    case = simulation.case_manager
+    paad = PrepareAspireAlphacscDataset(
+        case.fif_file, case.fwd['ico5'], atoms_width, n_runs, n_ica_comp,
+        n_atoms)
+    ds, _ = paad.fit_transform(raw)
+    assert raw.info['sfreq'] == ds.time.attrs['sfreq']
+    assert len(ds.run.values) == n_runs
+    assert len(ds.alphacsc_atom.values) == n_atoms
+    assert len(ds.ica_component.values) == n_ica_comp
