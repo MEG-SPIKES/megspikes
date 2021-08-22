@@ -36,7 +36,10 @@ def test_aspire_alphacsc_pipeline(simulation):
 
 @pytest.mark.happy
 def test_iz_prediction_pipeline(simulation):
-    pipe = iz_prediction_pipeline(simulation.case_manager, 1000.)
+    params = {
+        'PrepareClustersDataset': {'detection_sfreq': 1000.}
+    }
+    pipe = iz_prediction_pipeline(simulation.case_manager, params)
     atoms_lib = {'spikes': simulation.detections}
     raw = simulation.raw_simulation.copy()
     _ = pipe.fit_transform((atoms_lib, raw))

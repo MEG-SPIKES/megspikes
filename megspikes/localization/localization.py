@@ -523,7 +523,8 @@ class ForwardToMNI(Localization, BaseEstimator, TransformerMixin):
 
 
 class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
-    def __init__(self, case: CaseManager,
+    def __init__(self,
+                 case: CaseManager,
                  sensors: Union[str, bool] = True,
                  smoothing_steps_one_cluster: int = 3,
                  smoothing_steps_final: int = 10,

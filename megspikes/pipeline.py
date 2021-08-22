@@ -21,6 +21,8 @@ from .utils import PrepareData, ToFinish
 
 aspire_alphacsc_params = os.path.join(
     os.path.dirname(__file__), "aspire_alphacsc_default_params.yml")
+clusters_params = os.path.join(
+    os.path.dirname(__file__), "clusters_default_params.yml")
 
 
 class MakePipeline():
@@ -109,14 +111,20 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
     return pipe
 
 
-def iz_prediction_pipeline(case: CaseManager, detection_sfreq: float = 200.):
+# detection_sfreq: float = 200.
+def iz_prediction_pipeline(case: CaseManager, update_params: dict):
+    with open(clusters_params, 'rt') as f:
+        default_params = yaml.safe_load(f.read())
+    params = update_default_params(default_params, update_params)
     pipe = Pipeline([
         ('prepare_clusters_dataset',
          PrepareClustersDataset(fif_file=case.fif_file, fwd=case.fwd['ico5'],
-                                detection_sfreq=detection_sfreq)),
-        ('localize_clusters', ClustersLocalization(case=case)),
+                                **params['PrepareClustersDataset'])),
+        ('localize_clusters',
+         ClustersLocalization(case=case, **params['ClustersLocalization'])),
         ('convert_forward_to_mni', ForwardToMNI(case=case)),
-        ('predict_IZ', PredictIZClusters(case=case)),
+        ('predict_IZ',
+         PredictIZClusters(case=case, **params['PredictIZClusters'])),
         ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
     return pipe
