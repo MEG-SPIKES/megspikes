@@ -1,7 +1,6 @@
 import logging
-from pathlib import Path
 import warnings
-from typing import List, Dict, Tuple, Union
+from typing import Dict, List, Tuple
 
 import mne
 import numpy as np
@@ -13,9 +12,9 @@ from sklearn import preprocessing
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
 
-from ..utils import create_epochs
-from ..database.database import (Database, check_and_read_from_dataset,
+from ..database.database import (check_and_read_from_dataset,
                                  check_and_write_to_dataset)
+from ..utils import create_epochs
 
 mne.set_log_level("ERROR")
 
@@ -946,37 +945,3 @@ class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
             return True
         else:
             return True
-
-
-class ManualDetections(TransformerMixin, BaseEstimator):
-    """Convert manual detections to clusters dataset.
-    """
-    def __init__(self, clusters_dataset: Union[str, Path], database: Database,
-                 detections: np.ndarray, clusters: np.ndarray) -> None:
-        self.clusters_dataset = clusters_dataset
-        self.database = database
-        self.detections = detections
-        self.clusters = clusters
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        ds = self.database.make_clusters_dataset(
-            X[1].times, len(np.unique(self.clusters)), 1, X[1].info['sfreq'])
-
-        spikes = np.zeros_like(ds.time.values)
-        spikes[self.detections] = 1
-        check_and_write_to_dataset(
-            ds, 'spike', spikes, dict(detection_property='detection'))
-
-        spike_clusters = np.zeros_like(ds.time.values)
-        spike_clusters[self.detections] = self.clusters
-        check_and_write_to_dataset(
-            ds, 'spike', spike_clusters, dict(detection_property='cluster'))
-
-        spike_sensors = np.zeros_like(ds.time.values)
-        spike_sensors[self.detections] = 0
-        check_and_write_to_dataset(
-            ds, 'spike', spike_sensors, dict(detection_property='sensor'))
-        return (ds, X[1])

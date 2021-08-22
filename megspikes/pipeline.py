@@ -1,23 +1,20 @@
 import os
 
-import numpy as np
 import yaml
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from .casemanager.casemanager import CaseManager
 from .database.database import (LoadDataset, PrepareAspireAlphacscDataset,
-                                PrepareClustersDataset, SaveDataset,
-                                read_meg_info_for_database)
+                                PrepareClustersDataset, SaveDataset)
 from .detection.detection import (AspireAlphacscRunsMerging, CleanDetections,
                                   ComponentsSelection, DecompositionAlphaCSC,
-                                  DecompositionICA, ManualDetections,
-                                  PeakDetection, SelectAlphacscEvents)
+                                  DecompositionICA, PeakDetection,
+                                  SelectAlphacscEvents)
 from .localization.localization import (AlphaCSCComponentsLocalization,
                                         ClustersLocalization, ForwardToMNI,
                                         ICAComponentsLocalization,
                                         PeakLocalization, PredictIZClusters)
 from .utils import PrepareData, ToFinish
-
 
 aspire_alphacsc_params = os.path.join(
     os.path.dirname(__file__), "aspire_alphacsc_default_params.yml")
@@ -111,7 +108,6 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
     return pipe
 
 
-# detection_sfreq: float = 200.
 def iz_prediction_pipeline(case: CaseManager, update_params: dict):
     with open(clusters_params, 'rt') as f:
         default_params = yaml.safe_load(f.read())
@@ -130,22 +126,16 @@ def iz_prediction_pipeline(case: CaseManager, update_params: dict):
     return pipe
 
 
-def manual_pipeline(case: CaseManager, detections: np.ndarray,
-                    clusters: np.ndarray):
-    database = read_meg_info_for_database(case.fif_file, case.fwd['ico5'])
-
-    pipe = Pipeline([
-        ('make_clusters_library', ManualDetections(
-            case.cluster_dataset, database, detections, clusters)),
-        ('localize_clusters', ClustersLocalization(case=case)),
-        ('convert_forward_to_mni', ForwardToMNI(case=case)),
-        ('predict_IZ', PredictIZClusters(case=case)),
-        ('save_dataset', SaveDataset(dataset=case.manual_cluster_dataset))
-    ])
-    return pipe
-
-
 def update_default_params(defaults: dict, updates: dict):
+    """Update default pipeline parameters.
+
+    Parameters
+    ----------
+    defaults : dict
+        default pipeline parameters
+    updates : dict
+        parameters to update
+    """
     def recursive_update(params, key, val):
         for k, v in params.items():
             if isinstance(v, dict):
