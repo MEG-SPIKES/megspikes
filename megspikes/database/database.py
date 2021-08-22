@@ -663,12 +663,12 @@ def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
 
     if isinstance(selection, dict):
         data = ds[da_name].loc[selection].values.copy()
-        if np.max(data) != np.min(data):
+        if np.max(data) == np.min(data):
             warnings.warn(
                 f"{da_name}.loc[{selection}] values are all the same")
     else:
         data = ds[da_name].values.copy()
-        if np.max(data) != np.min(data):
+        if np.max(data) == np.min(data):
             warnings.warn(
                 f"{da_name} values are all the same")
         else:
