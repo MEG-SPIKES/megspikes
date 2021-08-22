@@ -142,6 +142,7 @@ dmypy.json
 /examples/data/
 /examples/exapmles_work_in_progress/
 /tests_data/
+/tutorial_data/
 /megspikes/clusters_gui/
 
 # data

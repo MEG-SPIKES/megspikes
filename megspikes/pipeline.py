@@ -76,13 +76,6 @@ def aspire_alphacsc_pipeline(case: CaseManager,
                 ('prepare_data',
                  PrepareData(data_file=case.fif_file, sensors=sens,
                              resample=resample)),
-                ('prepare_aspire_alphacsc_dataset',
-                 PrepareAspireAlphacscDataset(
-                     fif_file=case.fif_file, fwd=case.fwd['ico5'],
-                     atoms_width=atoms_width, n_runs=len(runs),
-                     n_ica_comp=n_ica_components, n_atoms=n_atoms)),
-                ('save_empty_dataset',
-                 SaveDataset(dataset=case.dataset)),
                 ('load_dataset',
                  LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                 ('ica_decomposition',
@@ -96,6 +89,17 @@ def aspire_alphacsc_pipeline(case: CaseManager,
                 ])))
         pipe_runs = []
     pipe = Pipeline([
+        ('load_data',
+         PrepareData(data_file=case.fif_file, sensors=True,
+                     resample=resample)),
+        ('prepare_aspire_alphacsc_dataset',
+         PrepareAspireAlphacscDataset(
+             fif_file=case.fif_file, fwd=case.fwd['ico5'],
+             atoms_width=atoms_width, n_runs=len(runs),
+             n_ica_comp=n_ica_components, n_atoms=n_atoms)),
+        ('save_empty_dataset',
+            SaveDataset(dataset=case.dataset)),
+        ('finish_preparation', ToFinish()),
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),  # no output
         ('prepare_data',
          PrepareData(data_file=case.fif_file, sensors=True,
