@@ -21,36 +21,79 @@ from ..utils import (create_epochs, spike_snr_all_channels,
 mne.set_log_level("WARNING")
 
 
-class PlotPipeline():
-    def __init__(self) -> None:
-        pass
+class PlotDetections(Localization):
+    """Plot spikes' detection results.
+    """
+    def __init__(self, ds: xr.Dataset, case: CaseManager) -> None:
+        self.ds = ds.copy(deep=True)
+        self.setup_fwd(case, sensors=True, spacing='oct5')
+        self.grad = self.ds.attrs['grad']
+        self.mag = self.ds.attrs['mag']
+        self.dprop = self.ds.detection_properties.copy(deep=True)
+        self.sica = self.ds.ica_sources.copy(deep=True)
+        self.sfreq = self.ds.time.attrs['sfreq']
 
-    def plot_ica_components(self, ds: xr.Dataset, info: mne.Info,
-                            sensors: str = 'grad', n_columns: int = 5):
+    @property
+    def dataset(self):
+        return self.ds
+
+    @property
+    def forward_model(self):
+        return self.fwd
+
+
+class PlotPipeline(param.Parameterized):
+    run = param.Selector(default=0, label="Run")
+    ica_comp = param.Selector(default=0, label="ICA component")
+    sensors = param.Selector(default='grad', objects=['mag', 'grad'],
+                             label="Sensors")
+    detection_type = param.Selector(
+        default='ica_detection',
+        objects=['ica_detection', 'selected_for_alphacsc',
+                 'alphacsc_detection'],
+        label="Detection type")
+    preprocess_ica_ts = param.Boolean(False, label="Preprocess ICA timeseries")
+    time = param.Range(default=(0, 5))
+
+    def __init__(self, ds: xr.Dataset, case: CaseManager, **params) -> None:
+        super().__init__(**params)
+        self.data = PlotDetections(ds, case)
+        self.param.run.objects = self.data.ds.run.values
+        self.ts_type = 'ica_component'
+        self.param.time.bounds = (0, self.data.ds.time.values[-1])
+
+    def view_ica(self):
+        app = pn.Column(
+            pn.Param(
+                self.param,
+                parameters=['sensors'],
+                default_layout=pn.Row,
+                name="Select sensors",
+                width=800
+                ),
+            pn.Row(
+                self._plot_ica_components,
+                width=1000,
+                height=600,
+                scroll=True))
+        return app
+
+    @param.depends('sensors')
+    def _plot_ica_components(self, n_columns: int = 3):
         """Plot ICA components.
         NOTE: the colorbar is not the same for all components
 
         Parameters
         ----------
-        arr : xr.DataArray
-            DataArray from the results DataSet with the shape ica_components
-            by channels
-        info : mne.Info
-            info data structure for plotting. raw_fif.info file could be used
-        sensors : str, optional
-            sensors for plotting, by default 'grad'
         n_columns : int, optional
             number of columns in the plot, by default 5
-
-        Returns
-        -------
-        matplotlib.figure.Figure
-            Plot with all ica components
         """
-        info = mne.pick_info(info, mne.pick_types(info, meg=sensors))
-        data = ds.ica_components.loc[
-            dict(channel=ds.channel_names.attrs[sensors])].values
-        n_sens = len(ds.channel_names.attrs[sensors])
+        info = mne.pick_info(self.data.info, mne.pick_types(
+            self.data.info, meg=self.sensors))
+        data = self.data.ds.ica_components.loc[
+            dict(channel=self.data.ds.channel_names.attrs[
+                self.sensors])].values
+        n_sens = len(self.data.ds.channel_names.attrs[self.sensors])
 
         # set figure
         n_components = data.shape[0]
@@ -70,123 +113,86 @@ class PlotPipeline():
                 ax.axis('off')
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)
-        return fig
+        plt.close()
+        return pn.pane.Matplotlib(fig, tight=True)
 
-    def plot_sources_and_detections(self, ds: xr.Dataset,
-                                    run: int = 0,
-                                    filter_ica: bool = True):
-        # import holoviews as hv
-        import hvplot.xarray
+    def view_ica_sources_and_peaks(self):
+        self._prepare_ica_sources()
+        self._prepare_detections_overlay()
+        app = pn.Column(
+            '### Plot detections on ICA sources time-series',
+            pn.Param(
+                self.param,
+                parameters=['sensors', 'run', 'ts_type', 'detection_type'],
+                default_layout=pn.Row,
+                name="Parameters",
+                width=800
+                ),
+            pn.Param(
+                self.param,
+                parameters=['time', 'preprocess_ica_ts'],
+                default_layout=pn.Row,
+                name="Actions",
+                width=800),
+            pn.Row(
+                self._plot_ica_sources_with_overlay, width=1000, height=600,
+                scroll=True)
+            )
+        return app
 
-        def select_detections(ts_for_overlay, run,
-                              detection_property='ica_detection',
-                              by='ica_component',
-                              name='ica_peak_detection'):
+    @param.depends('sensors', 'preprocess_ica_ts', watch=True)
+    def _prepare_ica_sources(self):
+        self.ica_ts = self.data.sica.sel(
+            sensors=self.sensors).copy(deep=True)
+        if self.preprocess_ica_ts:
+            self.ica_ts = self._filter_ica_sources(self.ica_ts)
 
-            detections = xr.zeros_like(ts_for_overlay)
-            detections.name = name
+    @param.depends('run', 'sensors', 'detection_type', 'preprocess_ica_ts',
+                   watch=True)
+    def _prepare_detections_overlay(self):
+        detections = xr.zeros_like(self.ica_ts)
+        detections.name = "detections_for_overlay"
+        sel1 = dict(detection_property=self.ts_type, run=self.run,
+                    sensors=self.sensors)
+        sel2 = dict(detection_property=self.detection_type, run=self.run,
+                    sensors=self.sensors)
 
-            sel_ica_component = dict(detection_property=by, run=run)
-            ica_source_ind = ds.detection_properties.loc[sel_ica_component]
-            for sens in ds.sensors.values:
-                for ica_comp_ind in ds.ica_component.values:
-                    sel_detections = dict(
-                        detection_property=detection_property,
-                        run=run, sensors=sens)
-                    detections.loc[sens, ica_comp_ind] = (
-                        ts_for_overlay.loc[sens, ica_comp_ind] *
-                        ds.detection_properties.loc[sel_detections])
-                    mask = ica_source_ind.loc[sens] != ica_comp_ind
-                    detections.loc[sens, ica_comp_ind][mask] *= 0
+        ica_source_ind = self.data.dprop.loc[sel1]
+        for ica_comp_ind in self.data.ds.ica_component.values:
+            detections.loc[ica_comp_ind] = (
+                self.ica_ts.loc[ica_comp_ind] * self.data.dprop.loc[sel2])
+            mask = ica_source_ind != ica_comp_ind
+            detections.loc[ica_comp_ind][mask] *= 0
+        self.ica_source_ind = ica_source_ind
+        self.detections_overlay = detections.where(detections != 0)
 
-            detections = detections.where(detections != 0)
-            return detections
+    @param.depends('run', 'sensors', 'detection_type', 'preprocess_ica_ts',
+                   'time')
+    def _plot_ica_sources_with_overlay(self):
+        time_slice = slice(self.time[0], self.time[1])
+        # .loc[self.ica_source_ind]
+        plot_ts = self.ica_ts.loc[:, time_slice].hvplot(
+            kind='line', width=800, height=100,
+            yaxis=None, xaxis=None, subplots=True, color='k',
+            line_width=0.5, by=['ica_component']).cols(1)
 
-        select_sensors = pn.widgets.Select(
-            name='Sensors', options=['grad', 'mag'])
+        plot_overlay = self.detections_overlay.loc[:, time_slice].hvplot(
+            color='r', alpha=0.5, width=800, height=100,
+            # tools=['hover', 'lasso_select', 'tap', 'box_select'],
+            yaxis=None, xaxis=None, subplots=True, kind='scatter',
+            by=['ica_component']).cols(1)
+        return plot_ts * plot_overlay
 
-        time_slider = pnw.RangeSlider(
-            name='time', start=0., end=float(ds.time.max().values),
-            value=(0., 5.), step=0.01)
-
-        ica_src = ds.ica_sources.copy(deep=True)
-        ica_src.name = 'original_ica_sources'
-
-        ica_src2 = ds.ica_sources.copy(deep=True)
-        ica_src2.name = 'filtered_ica_sources'
-
-        if filter_ica:
-            sfreq = 200
-            freq = np.array([20, 90]) / (sfreq / 2.0)
-            b, a = signal.butter(3, freq, "pass")
-            for i in range(ica_src2.values.shape[0]):
-                ica_src2.values[i, :] = signal.filtfilt(
-                    b, a, ica_src2.values[i, :])
-                ica_src2.values[i, :] = preprocessing.robust_scale(
-                    ica_src2.values[i, :])
-
-        detections = select_detections(
-            ica_src, run, name='ica_peak_detection')
-
-        detections_filt = select_detections(
-            ica_src2, run, name='ica_peak_detection_filt')
-
-        detections_cleaned = select_detections(
-            ica_src, run, detection_property='selected_for_alphacsc',
-            name='selected_for_alphacsc')
-
-        detections_cleaned_filt = select_detections(
-            ica_src2, run, detection_property='selected_for_alphacsc',
-            name='selected_for_alphacsc_filt')
-
-        ds_plot = xr.merge([
-            ica_src, ica_src2, detections, detections_filt,
-            ds.detection_properties.sel(run=run),
-            detections_cleaned, detections_cleaned_filt])
-        ds_plot = ds_plot.interactive().sel(time=time_slider).sel(
-            sensors=select_sensors)
-
-        plot_src = (
-            ds_plot.original_ica_sources
-            .hvplot(kind='line', width=1000, height=100,
-                    yaxis=None, xaxis=None, subplots=True, color='k',
-                    line_width=0.5, by=['ica_component']).cols(1))
-
-        plot_src_filt = (
-            ds_plot.filtered_ica_sources
-            .hvplot(kind='line', width=1000, height=100,
-                    yaxis=None, xaxis=None, subplots=True, color='k',
-                    line_width=0.5, by=['ica_component']).cols(1))
-
-        kw_params = dict(width=1000, height=100,
-                         tools=['hover', 'lasso_select', 'tap', 'box_select'],
-                         yaxis=None, xaxis=None, subplots=True, kind='scatter',
-                         by=['ica_component'])
-
-        plot_det = (
-            ds_plot.ica_peak_detection
-            .hvplot(color='b', alpha=0.2, **kw_params).cols(1))
-
-        plot_det_filt = (
-            ds_plot.ica_peak_detection_filt
-            .hvplot(color='b', alpha=0.2, **kw_params).cols(1))
-
-        plot_selected_det = (
-            ds_plot.selected_for_alphacsc
-            .hvplot(color='r', alpha=0.5, **kw_params).cols(1))
-
-        plot_selected_det_filt = (
-            ds_plot.selected_for_alphacsc_filt
-            .hvplot(color='r', alpha=0.5, **kw_params).cols(1))
-
-        table = (
-            ds_plot.detection_properties
-            .hvplot(kind='table', y='detection_property', x='time', width=1000,
-                    by=['ica_component']))
-        ts_det = plot_src*plot_det*plot_selected_det
-        ts_det_filt = plot_src_filt*plot_det_filt*plot_selected_det_filt
-        full_plot = (ts_det + ts_det_filt + table).cols(1)
-        return full_plot
+    def _filter_ica_sources(self, ts, sfreq: float = 200.):
+        sfreq = 200
+        freq = np.array([20, 90]) / (sfreq / 2.0)
+        b, a = signal.butter(3, freq, "pass")
+        for i in range(ts.values.shape[0]):
+            ts.values[i, :] = signal.filtfilt(
+                b, a, ts.values[i, :])
+            ts.values[i, :] = preprocessing.robust_scale(
+                ts.values[i, :])
+        return ts
 
     def plot_ica_peaks_localizations(self):
         pass
@@ -328,13 +334,6 @@ def plot_epochs_snr(epochs: mne.Epochs, event_name: str, peak_ind: int = 500,
     ax[1].set_ylabel('$Amplitude^2$')
     plt.suptitle(f"Event {event_name}")
     return fig
-
-
-class PlotDetections():
-    """Plot spikes' detection results.
-    """
-    def __init__(self, ds: xr.Dataset) -> None:
-        self.ds = ds
 
 
 class PlotClusters(Localization):
