@@ -30,6 +30,7 @@ class PlotDetections(Localization):
         self.dprop = self.ds.detection_properties.copy(deep=True)
         self.sica = self.ds.ica_sources.copy(deep=True)
         self.sfreq = self.ds.time.attrs['sfreq']
+        self.atom_prop = self._prepare_atoms_properties()
 
     @property
     def dataset(self):
@@ -38,6 +39,18 @@ class PlotDetections(Localization):
     @property
     def forward_model(self):
         return self.fwd
+
+    @property
+    def alphacsc_atoms(self):
+        return self.atom_prop
+
+    def _prepare_atoms_properties(self):
+        atoms_properties = self.ds.alphacsc_atoms_properties.to_dataframe()
+        atoms_properties = atoms_properties.reset_index().pivot(
+            index=['run', 'sensors', 'alphacsc_atom'],
+            columns='alphacsc_atom_property',
+            values='alphacsc_atoms_properties')
+        return atoms_properties
 
 
 class PlotPipeline(param.Parameterized):
