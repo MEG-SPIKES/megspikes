@@ -45,6 +45,7 @@ class PlotPipeline(param.Parameterized):
     ica_comp = param.Selector(default=0, label="ICA component")
     sensors = param.Selector(default='grad', objects=['mag', 'grad'],
                              label="Sensors")
+    atom = param.Selector(default=0, label="Atom")
     detection_type = param.Selector(
         default='ica_detection',
         objects=['ica_detection', 'selected_for_alphacsc',
@@ -57,10 +58,11 @@ class PlotPipeline(param.Parameterized):
         super().__init__(**params)
         self.data = PlotDetections(ds, case)
         self.param.run.objects = self.data.ds.run.values
+        self.param.atom.objects = self.data.ds.alphacsc_atom.values
         self.ts_type = 'ica_component'
         self.param.time.bounds = (0, self.data.ds.time.values[-1])
 
-    # ---------------------------- ICA ---------------------------- #
+    # --------------------------- ICA components --------------------------- #
     def view_ica(self):
         """View ICA components"""
         app = pn.Column(
@@ -115,6 +117,8 @@ class PlotPipeline(param.Parameterized):
                 ax.get_yaxis().set_visible(False)
         plt.close()
         return pn.pane.Matplotlib(fig, tight=True)
+
+    # --------------------------- ICA sources --------------------------- #
 
     def view_ica_sources_and_peaks(self):
         self._prepare_ica_sources()
@@ -213,7 +217,7 @@ class PlotPipeline(param.Parameterized):
     def plot_aspire_clusters(self):
         pass
 
-    # ---------------------------- AlphaCSC ---------------------------- #
+    # -------------------------- AlphaCSC atoms ---------------------------- #
 
     def view_alphacsc_atoms(self):
         """View AlphaCSC atoms"""
@@ -275,12 +279,31 @@ class PlotPipeline(param.Parameterized):
         plt.close()
         return pn.pane.Matplotlib(fig, tight=True)
 
-    def view_alphacsc_clusters(self):
-        pass
+    # --------------------------- AlphaCSC clusters ------------------------- #
 
-    def _plot_alphacsc_clusters(self, ds: xr.Dataset, raw: mne.io.Raw,
-                                atom: int = 0):
-        sfreq = raw.info['sfreq']
+    def view_alphacsc_clusters(self, raw: mne.io.Raw):
+        self.raw = raw
+        app = pn.Column(
+            pn.Param(
+                self.param,
+                parameters=['sensors', 'run', 'atom'],
+                default_layout=pn.Row,
+                name="Select",
+                width=800
+                ),
+            pn.Row(
+                self._plot_alphacsc_clusters,
+                width=1000,
+                height=400,
+                scroll=True))
+        return app
+
+    @param.depends('sensors', 'run', 'atom')
+    def _plot_alphacsc_clusters(self):
+        atom = self.atom
+        ds = self.data.ds.sel(run=self.run, sensors=self.sensors)
+
+        sfreq = self.raw.info['sfreq']
         detections = check_and_read_from_dataset(
             ds, 'detection_properties',
             dict(detection_property='alphacsc_detection'))
@@ -291,6 +314,7 @@ class PlotPipeline(param.Parameterized):
             ds, 'alphacsc_atoms_properties',
             dict(alphacsc_atom_property='goodness'))
         u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
+        u_hat = u_hat[:, self.data.ds.channel_names.attrs[self.sensors]]
         v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
         goodness = goodness[atom]
         u_hat = u_hat[atom]
@@ -303,8 +327,9 @@ class PlotPipeline(param.Parameterized):
 
         detection_mask = (detections > 0) & (atoms == atom)
         spikes = np.where(detection_mask)[0]
-        spikes = (spikes / ds.time.attrs['sfreq']) * sfreq
-        epochs = create_epochs(raw, spikes, -0.25, 0.25)
+        spikes = (spikes / self.data.sfreq) * sfreq
+        epochs = create_epochs(self.raw, spikes, -0.25, 0.25,
+                               sensors=self.sensors)
         n_samples_epoch = len(epochs.times)
         evoked = epochs.average()
         spikes = epochs.get_data()[:, max_channel, :]
@@ -344,7 +369,8 @@ class PlotPipeline(param.Parameterized):
             ax = plt.subplot(2, len(times), len(times) + n+1)
             evoked.plot_topomap(
                 time, axes=ax, show=False, colorbar=False, contours=0)
-        return fig
+        plt.close()
+        return pn.pane.Matplotlib(fig, tight=True)
 
     def plot_clusters_library(self):
         pass
