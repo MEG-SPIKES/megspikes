@@ -1,11 +1,9 @@
 import logging
-import holoviews as hv
 import hvplot.xarray
 import matplotlib.pylab as plt
 import mne
 import numpy as np
 import panel as pn
-import panel.widgets as pnw
 import param
 import xarray as xr
 from scipy import signal
@@ -62,6 +60,7 @@ class PlotPipeline(param.Parameterized):
         self.ts_type = 'ica_component'
         self.param.time.bounds = (0, self.data.ds.time.values[-1])
 
+    # ---------------------------- ICA ---------------------------- #
     def view_ica(self):
         """View ICA components"""
         app = pn.Column(
@@ -159,11 +158,24 @@ class PlotPipeline(param.Parameterized):
                     sensors=self.sensors)
 
         ica_source_ind = self.data.dprop.loc[sel1]
+        if self.detection_type == 'alphacsc_detection':
+            alignment = self.data.dprop.sel(
+                detection_property='ica_alphacsc_aligned', run=self.run,
+                sensors=self.sensors).values
+            ind2 = np.where(alignment != 0)[0]  # alpha peak
+            ind1 = np.int32(alignment[ind2])  # ica peak
+
         for ica_comp_ind in self.data.ds.ica_component.values:
             detections.loc[ica_comp_ind] = (
                 self.ica_ts.loc[ica_comp_ind] * self.data.dprop.loc[sel2])
             mask = ica_source_ind != ica_comp_ind
-            detections.loc[ica_comp_ind][mask] *= 0
+            if self.detection_type == 'alphacsc_detection':
+                mask2 = np.zeros_like(mask, dtype=bool)
+                mask2[ind2] = mask[ind1]
+                detections.loc[ica_comp_ind][mask2] *= 0
+
+            else:
+                detections.loc[ica_comp_ind][mask] *= 0
         self.ica_source_ind = ica_source_ind
         self.detections_overlay = detections.where(detections != 0)
 
@@ -200,6 +212,8 @@ class PlotPipeline(param.Parameterized):
 
     def plot_aspire_clusters(self):
         pass
+
+    # ---------------------------- AlphaCSC ---------------------------- #
 
     def view_alphacsc_atoms(self):
         """View AlphaCSC atoms"""
@@ -261,8 +275,11 @@ class PlotPipeline(param.Parameterized):
         plt.close()
         return pn.pane.Matplotlib(fig, tight=True)
 
-    def plot_alphacsc_clusters(self, ds: xr.Dataset, raw: mne.io.Raw,
-                               atom: int = 0):
+    def view_alphacsc_clusters(self):
+        pass
+
+    def _plot_alphacsc_clusters(self, ds: xr.Dataset, raw: mne.io.Raw,
+                                atom: int = 0):
         sfreq = raw.info['sfreq']
         detections = check_and_read_from_dataset(
             ds, 'detection_properties',
