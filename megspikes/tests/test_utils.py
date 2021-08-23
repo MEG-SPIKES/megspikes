@@ -1,12 +1,11 @@
 import os.path as op
 from pathlib import Path
 
+import mne
 import numpy as np
 import pytest
-from megspikes.utils import (labels_to_mni, spike_snr_all_channels,
-                             spike_snr_max_channel, prepare_data,
-                             PrepareData)
-import mne
+from megspikes.utils import (PrepareData, labels_to_mni, prepare_data,
+                             spike_snr_all_channels, spike_snr_max_channel)
 
 mne.set_log_level("ERROR")
 
@@ -78,8 +77,8 @@ def test_snr_estimation(simulation_epochs_grad):
     n_max_channels = 20
     snr_all = spike_snr_all_channels(data, peak_ind)
     snr_max, max_ch = spike_snr_max_channel(data, peak_ind, n_max_channels)
-    assert np.round(snr_all, 1) == 1.8
-    assert np.round(snr_max, 1) == 6.2
+    assert np.isclose(snr_all, 1.8, atol=0.5)
+    assert np.isclose(snr_max, 6.2, atol=0.5)
     assert len(max_ch) == n_max_channels
 
 
