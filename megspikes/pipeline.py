@@ -5,7 +5,8 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 
 from .casemanager.casemanager import CaseManager
 from .database.database import (LoadDataset, PrepareAspireAlphacscDataset,
-                                PrepareClustersDataset, SaveDataset)
+                                PrepareClustersDataset, ReadDetectionResults,
+                                SaveDataset)
 from .detection.detection import (AspireAlphacscRunsMerging, CleanDetections,
                                   ComponentsSelection, DecompositionAlphaCSC,
                                   DecompositionICA, PeakDetection,
@@ -20,11 +21,6 @@ aspire_alphacsc_params = os.path.join(
     os.path.dirname(__file__), "aspire_alphacsc_default_params.yml")
 clusters_params = os.path.join(
     os.path.dirname(__file__), "clusters_default_params.yml")
-
-
-class MakePipeline():
-    def __init__(self, case: CaseManager) -> None:
-        self.case = case
 
 
 def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
@@ -123,6 +119,15 @@ def iz_prediction_pipeline(case: CaseManager, update_params: dict):
          PredictIZClusters(case=case, **params['PredictIZClusters'])),
         ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
         ])
+    return pipe
+
+
+def read_detection_iz_prediction_pipeline(case: CaseManager,
+                                          clusters_params: dict):
+    pipe = Pipeline([
+        ('read_detections_results', ReadDetectionResults()),
+        ('iz_prediction_pipeline',
+         iz_prediction_pipeline(case, clusters_params))])
     return pipe
 
 

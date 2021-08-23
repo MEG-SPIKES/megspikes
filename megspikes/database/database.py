@@ -646,6 +646,38 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             selection_run_ch] = from_ds.alphacsc_u_hat
 
 
+class ReadDetectionResults(TransformerMixin, BaseEstimator):
+    """Read detection pipeline results to strart cluster pipeline."""
+    def __init__(self) -> None:
+        pass
+
+    def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        return self
+
+    def transform(self, X: Tuple[xr.Dataset, mne.io.Raw]
+                  ) -> Tuple[dict, mne.io.Raw]:
+        spikes = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_library_properties',
+            dict(atoms_library_property='library_detection'))
+        clusters = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_library_properties',
+            dict(atoms_library_property='library_cluster'))
+        sensors = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_library_properties',
+            dict(atoms_library_property='library_sensors'))
+        runs = check_and_read_from_dataset(
+            X[0], 'alphacsc_atoms_library_properties',
+            dict(atoms_library_property='library_run'))
+        mask = spikes != 0
+        detections = {
+            'spikes': np.where(mask != 0)[0],
+            'spike_clusters': clusters[mask],
+            'spike_sensors': sensors[mask],
+            'spike_runs': runs[mask],
+        }
+        return (detections, X[1])
+
+
 def select_sensors(ds: xr.Dataset, sensors: str,
                    run: int) -> xr.Dataset:
     channels = ds.channel_names.attrs[sensors]

@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 from megspikes.pipeline import (aspire_alphacsc_pipeline,
-                                iz_prediction_pipeline, manual_pipeline,
+                                iz_prediction_pipeline,
+                                read_detection_iz_prediction_pipeline,
                                 update_default_params)
 
 
@@ -47,10 +48,15 @@ def test_iz_prediction_pipeline(simulation):
 
 @pytest.mark.happy
 @pytest.mark.slow
-def test_manual_pipeline(simulation):
-    pipe = manual_pipeline(simulation.case_manager, simulation.detections,
-                           simulation.clusters - 1)
-    _ = pipe.fit_transform((None, simulation.raw_simulation.copy()))
+def test_read_results_iz_prediction_pipeline(simulation,
+                                             aspire_alphacsc_random_dataset):
+    params = {
+        'PrepareClustersDataset': {'detection_sfreq': 200.}
+    }
+    pipe = read_detection_iz_prediction_pipeline(simulation.case_manager,
+                                                 params)
+    _ = pipe.fit_transform((aspire_alphacsc_random_dataset,
+                            simulation.raw_simulation.copy()))
 
 
 def test_update_default_params():

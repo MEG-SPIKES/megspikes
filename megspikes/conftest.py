@@ -101,6 +101,12 @@ def prepare_aspire_alphacsc_random_dataset(simulation):
             shape = ds['alphacsc_u_hat'].loc[selection_pipe_ch].shape
             ds['alphacsc_u_hat'].loc[
                 selection_pipe_ch] = np.random.sample(shape)
+    selection_spikes = dict(atoms_library_property='library_detection')
+    ds.alphacsc_atoms_library_properties.loc[selection_spikes][
+        np.int32(simulation.detections*0.2)] = 1
+    selection_clust = dict(atoms_library_property='library_cluster')
+    ds.alphacsc_atoms_library_properties.loc[selection_clust][
+        np.int32(simulation.detections*0.2)] = simulation.clusters - 1
     ds.to_netcdf(simulation.case_manager.dataset)
     return ds
 
