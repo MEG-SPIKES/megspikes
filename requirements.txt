@@ -11,6 +11,6 @@ scipy
 xlrd
 xarray
 netCDF4
-yaml
+pyyaml
 param
 panel
