@@ -1,16 +1,22 @@
+import logging
+import holoviews as hv
+import hvplot.xarray
 import matplotlib.pylab as plt
 import mne
 import numpy as np
 import panel as pn
 import panel.widgets as pnw
+import param
 import xarray as xr
 from scipy import signal
 from sklearn import preprocessing
 
-from ..database.database import check_and_read_from_dataset
+from ..casemanager.casemanager import CaseManager
+from ..database.database import (check_and_read_from_dataset,
+                                 check_and_write_to_dataset)
+from ..localization.localization import Localization
 from ..utils import (create_epochs, spike_snr_all_channels,
                      spike_snr_max_channel)
-
 
 mne.set_log_level("WARNING")
 
@@ -322,3 +328,132 @@ def plot_epochs_snr(epochs: mne.Epochs, event_name: str, peak_ind: int = 500,
     ax[1].set_ylabel('$Amplitude^2$')
     plt.suptitle(f"Event {event_name}")
     return fig
+
+
+class PlotDetections():
+    """Plot spikes' detection results.
+    """
+    def __init__(self, ds: xr.Dataset) -> None:
+        self.ds = ds
+
+
+class PlotClusters(Localization):
+    """Plot detected spikes average and localization.
+    """
+    def __init__(self, ds: xr.Dataset, case: CaseManager) -> None:
+        self.ds = ds.copy(deep=True)
+        self.setup_fwd(case, sensors=True, spacing='ico5')
+        self.prepare_clusters_properties(ds.copy(deep=True))
+        self.stc = self.ds.mne_localization.copy(deep=True)
+        self.evoked = self.ds.evoked.copy(deep=True)
+        self.grad = self.ds.attrs['grad']
+        self.mag = self.ds.attrs['mag']
+
+    @property
+    def dataset(self):
+        return self.ds
+
+    @property
+    def forward_model(self):
+        return self.fwd
+
+    @property
+    def clusters(self):
+        return self.clusters_properties
+
+    def prepare_clusters_properties(self, ds: xr.Dataset):
+        clusters_properties = ds.cluster_properties.to_dataframe()
+        clusters_properties = clusters_properties.reset_index().pivot(
+            index='cluster', columns='cluster_property',
+            values='cluster_properties')
+        self.clusters_properties = clusters_properties
+        del self.clusters_properties['cluster_id']
+        del self.clusters_properties['pipeline_type']
+
+
+class ClusterSlopeViewer(param.Parameterized):
+    """Clusters slope viewer. """
+    cluster = param.Selector(default=0, label="Cluster")
+    sensors = param.Selector(default='grad', objects=['mag', 'grad'],
+                             label="Sensors")
+    plot_stc = param.Action(lambda x: x.param.trigger('plot_stc'),
+                            label="Plot Source Estimate")
+    plot_evoked = param.Action(lambda x: x.param.trigger('plot_evoked'),
+                               label="Plot Evoked")
+    save_ds = param.Action(lambda x: x.param.trigger('save_ds'),
+                           label="Save Dataset")
+    fname_save_ds = param.String(label='Save dataset path')
+
+    def __init__(self, ds: xr.Dataset, case: CaseManager, **params):
+        super().__init__(**params)
+        self.data = PlotClusters(ds, case)
+        all_clusters = self.data.clusters_properties.index.values.tolist()
+        self.param.cluster.objects = all_clusters
+        self.table = pn.widgets.Tabulator(
+            self.data.clusters_properties, width=800)
+        self.fname_save_ds = str(
+            self.data.case.cluster_dataset.with_name(
+                f"{self.data.case_name}_clusters_manually_checked.nc"))
+
+    @param.depends('plot_stc', watch=True)
+    def _plot_stc_brain(self):
+        stc = self.data.array_to_stc(
+            self.data.stc.sel(
+                cluster=self.cluster, sensors=self.sensors).values,
+            self.data.fwd, self.data.case_name)
+        self.brain = stc.plot(
+            subjects_dir=self.data.freesurfer_dir, hemi='both')
+        # pc.brain.widgets['time'].get_value()
+
+    @param.depends('plot_evoked', watch=True)
+    def _plot_evoked(self):
+        ev = self.data.evoked.sel(cluster=self.cluster).values
+        evoked = mne.EvokedArray(ev, self.data.info)
+        evoked.plot()
+
+    @param.depends('save_ds', watch=True)
+    def _save_dataset(self):
+        check_and_write_to_dataset(
+            self.data.ds, 'cluster_properties',
+            self.data.clusters_properties['time_slope'].values,
+            dict(cluster_property='time_slope'))
+        check_and_write_to_dataset(
+            self.data.ds, 'cluster_properties',
+            self.data.clusters_properties['time_baseline'].values,
+            dict(cluster_property='time_baseline'))
+        check_and_write_to_dataset(
+            self.data.ds, 'cluster_properties',
+            self.data.clusters_properties['time_peak'].values,
+            dict(cluster_property='time_peak'))
+        self.data.ds.to_netcdf(self.fname_save_ds, mode='w', format="NETCDF4",
+                               engine="netcdf4")
+        logging.warning('DS saved')
+
+    def view(self):
+        app = pn.Column(
+            pn.Param(
+                self.param,
+                parameters=['cluster', 'sensors'],
+                # widgets={"cluster": {"widget_type": pn.widgets.Select}}
+                # widgets={"plot_stc": {"button_type": "primary"}},
+                default_layout=pn.Row,
+                name="Select cluster",
+                width=800
+                ),
+            self.table,
+            pn.Param(
+                self.param,
+                parameters=['plot_stc', 'plot_evoked', 'save_ds'],
+                default_layout=pn.Row,
+                name="Actions",
+                width=800
+                ),
+            pn.Param(
+                self.param,
+                parameters=['fname_save_ds'],
+                default_layout=pn.Row,
+                name="Information",
+                width=800
+                )
+            )
+        return app
