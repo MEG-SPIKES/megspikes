@@ -14,31 +14,47 @@ from scipy import linalg, sparse
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..casemanager.casemanager import CaseManager
+from ..database.database import (check_and_read_from_dataset,
+                                 check_and_write_to_dataset)
 from ..utils import create_epochs, onset_slope_timepoints
 
 mne.set_log_level("ERROR")
 
 
+def array_to_stc(data: np.ndarray, fwd: mne.Forward, subject: str
+                 ) -> mne.SourceEstimate:
+    """Convert SourceEstimate data to mne.SourceEstimate object"""
+    vertices = [i['vertno'] for i in fwd['src']]
+    return mne.SourceEstimate(
+        data, vertices, tmin=0, tstep=0.001, subject=subject)
+
+
 class Localization():
-    def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True):
-        if not isinstance(case.fwd['oct5'], mne.Forward):
+    array_to_stc = staticmethod(array_to_stc)
+
+    def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True,
+                  spacing: str = 'oct5'):
+        if not isinstance(case.fwd[spacing], mne.Forward):
             raise RuntimeError("CaseManager don't include forward model")
         self.sensors = sensors
         self.case = case
         self.case_name = case.case
-        self.info = case.info
-        self.info = mne.pick_info(
-            case.info, mne.pick_types(case.info, meg=self.sensors))
-        self.n_channels = len(mne.pick_types(self.info, meg=True))
-
-        self.fwd = case.fwd['oct5']
-        if isinstance(self.sensors, str):
-            self.fwd = mne.pick_types_forward(self.fwd, meg=self.sensors)
-
-        self.bem = case.bem['oct5']
-        self.trans = case.trans['oct5']
+        self.bem = case.bem[spacing]
+        self.trans = case.trans[spacing]
         self.freesurfer_dir = case.freesurfer_dir
-        self.cov = mne.make_ad_hoc_cov(self.info)
+        self.info = case.info
+        self.info, self.fwd, self.cov = self.pick_sensors(
+            case.info, case.fwd[spacing], sensors)
+
+    def pick_sensors(self, info: mne.Info, fwd: mne.Forward,
+                     sensors: Union[str, bool] = True):
+        info_ = mne.pick_info(info, mne.pick_types(info, meg=sensors))
+        if isinstance(sensors, str):
+            fwd_ = mne.pick_types_forward(fwd, meg=sensors)
+        else:
+            fwd_ = fwd
+        cov = mne.make_ad_hoc_cov(info_)
+        return info_, fwd_, cov
 
     def make_labels_ts(self, stc: mne.SourceEstimate,
                        inverse_operator: mne.minimum_norm.InverseOperator,
@@ -131,31 +147,40 @@ class Localization():
         data = smooth_mat.dot(data)
         return data.flatten()
 
-    def array_to_stc(self, data: np.ndarray) -> mne.SourceEstimate:
-        """Convert SourceEstimate data to mne.SourceEstimate object"""
-        vertices = [i['vertno'] for i in self.fwd['src']]
-        return mne.SourceEstimate(
-            data, vertices, tmin=0, tstep=0.001, subject=self.case_name)
-
 
 class ICAComponentsLocalization(Localization, BaseEstimator, TransformerMixin):
-    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
-        self.setup_fwd(case, sensors)
+    """ Localize ICA components using mne.fit_dipole()."""
+    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        components = X[0]['ica_components'].values[:, :self.n_channels].T
-        evoked = mne.EvokedArray(components, self.info)
-        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
-
-        for n, d in enumerate(dip):
-            pos_mni = mne.head_to_mni(
-                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
-                subjects_dir=self.freesurfer_dir)
-            X[0]['ica_components_localization'][n, :] = pos_mni
-            X[0]['ica_components_gof'][n] = d.gof[0]
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        # read from database ica components
+        components = check_and_read_from_dataset(X[0], 'ica_components')
+        components = components.T
+        # create EvokedArray
+        evoked = mne.EvokedArray(components, self.info)
+
+        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
+
+        locs = np.zeros((len(dip), 3))
+        gof = np.zeros(len(dip))
+        for n, d in enumerate(dip):
+            locs[n, :] = mne.head_to_mni(
+                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
+                subjects_dir=self.freesurfer_dir)
+            gof[n] = d.gof[0]
+
+        check_and_write_to_dataset(
+            X[0], 'ica_component_properties', locs,
+            dict(ica_component_property=['mni_x', 'mni_y', 'mni_z']))
+        check_and_write_to_dataset(
+            X[0], 'ica_component_properties', gof,
+            dict(ica_component_property='gof'))
         logging.info("ICA components are localized.")
         return X
 
@@ -166,35 +191,52 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
     Parameters
     ----------
     sfreq : int, optional
-        downsample freq, by default 1000.
+        downsample freq, by default 200.
     window : list, optional
         MUSIC window, by default [-20, 30]
     """
     def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
-                 sfreq: int = 200, window: List[int] = [-20, 30]):
-        self.setup_fwd(case, sensors)
+                 sfreq: int = 200, window: List[int] = [-20, 30],
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
         self.window = window
         self.sfreq = sfreq
 
-    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        logging.info("ICA peaks are localized.")
-        return X
-
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        timestamps = X[0]["ica_peaks_timestamps"]
-        timestamps = timestamps[timestamps != 0]
-        n_peaks = len(timestamps)
-        spikes = np.sort(timestamps)
-        # NOTE: save sorted timestamps
-        X[0]["ica_peaks_timestamps"][:n_peaks] = spikes
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        detection = check_and_read_from_dataset(
+            X[0], 'detection_properties',
+            dict(detection_property='ica_detection'))
+        # samples
+        timestamps = np.where(detection > 0)[0]
 
         data = X[1].get_data()
         window = (np.array(self.window)/1000)*self.sfreq
         mni_coords, subcorr = self.fast_music(
-            data, self.info, spikes, window=window)
-        X[0]["ica_peaks_localization"][:n_peaks, :] = mni_coords
-        X[0]["ica_peaks_subcorr"][:n_peaks] = subcorr
-        return self
+            data, self.info, timestamps, window=window)
+
+        full_subcorrs = np.zeros_like(detection)
+        full_subcorrs[detection > 0] = subcorr
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_subcorrs,
+            dict(detection_property='subcorr'))
+
+        full_coords = np.zeros((detection.shape[0], 3))
+        full_coords[detection > 0, :] = mni_coords
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 2],
+            dict(detection_property='mni_x'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 1],
+            dict(detection_property='mni_y'))
+        check_and_write_to_dataset(
+            X[0], 'detection_properties', full_coords[:, 0],
+            dict(detection_property='mni_z'))
+        logging.info("ICA peaks are localized.")
+        return X
 
     def fast_music(self, data: np.ndarray, info: mne.Info, spikes: np.ndarray,
                    window: List[int]):
@@ -205,7 +247,7 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
         """
         common_atr = self._prepare_rap_music_input(info, self.cov, self.fwd)
         zyx_mni = np.zeros((len(spikes), 3))
-        subcorrs = np.zeros_like(spikes)
+        subcorrs = np.zeros(len(spikes), dtype=np.float64)
 
         for n, spike in enumerate(spikes):
             spike_data = data[:, int(spike+window[0]): int(spike+window[1])]
@@ -332,171 +374,199 @@ class PeakLocalization(Localization, BaseEstimator, TransformerMixin):
 
 class AlphaCSCComponentsLocalization(Localization, BaseEstimator,
                                      TransformerMixin):
-    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True):
-        self.setup_fwd(case, sensors)
+    def __init__(self, case: CaseManager, sensors: Union[str, bool] = True,
+                 spacing: str = 'oct5'):
+        self.spacing = spacing
+        self.setup_fwd(case, sensors, spacing)
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        components = X[0]['alphacsc_u_hat'].values[:, :self.n_channels].T
-        evoked = mne.EvokedArray(components, self.info)
-        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
-
-        for n, d in enumerate(dip):
-            pos_mni = mne.head_to_mni(
-                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
-                subjects_dir=self.freesurfer_dir)
-            X[0]['alphacsc_components_localization'][n, :] = pos_mni
-            X[0]['alphacsc_components_gof'][n] = d.gof[0]
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
-        logging.info("ICA components are localized.")
+        components = check_and_read_from_dataset(X[0], 'alphacsc_u_hat')
+        components = components.T
+        evoked = mne.EvokedArray(components, self.info)
+        dip = mne.fit_dipole(evoked, self.cov, self.bem, self.trans)[0]
+
+        locs = np.zeros((len(dip), 3))
+        gof = np.zeros(len(dip))
+        for n, d in enumerate(dip):
+            locs[n, :] = mne.head_to_mni(
+                d.pos[0],  self.case_name, self.fwd['mri_head_t'],
+                subjects_dir=self.freesurfer_dir)
+            gof[n] = d.gof[0]
+
+        check_and_write_to_dataset(
+            X[0], 'alphacsc_atoms_properties', locs,
+            dict(alphacsc_atom_property=['mni_x', 'mni_y', 'mni_z']))
+        check_and_write_to_dataset(
+            X[0], 'alphacsc_atoms_properties', gof,
+            dict(alphacsc_atom_property='gof'))
+        logging.info("AlphaCSC components are localized.")
         return X
 
 
 class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
     def __init__(self, case: CaseManager,
-                 db_name_detections: str,
-                 db_name_clusters: str,
-                 detection_sfreq: float = 200.,
-                 sensors: Union[str, bool] = True,
                  inv_method: str = 'MNE',
-                 epochs_window: Tuple[float] = (-0.5, 0.5)):
-        self.setup_fwd(case, sensors)
-        self.detection_sfreq = detection_sfreq
-        self.db_name_detections = db_name_detections
-        self.db_name_clusters = db_name_clusters
+                 epochs_window: Tuple[float] = (-0.5, 0.5),
+                 spacing='ico5'):
+        self.setup_fwd(case, sensors=True, spacing=spacing)
         self.inv_method = inv_method
         self.epochs_window = epochs_window
+        self.spacing = spacing
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
-        self.inverse_operator = make_inverse_operator(
-            self.info, self.fwd, self.cov, depth=None, fixed=False)
-        timestamps = X[0][self.db_name_detections].values
-        clusters = X[0][self.db_name_clusters].values
-        non_zero = timestamps != 0
-        timestamps = timestamps[non_zero]
-        clusters = clusters[non_zero]
-
-        # resample timestamps
-        timestamps = self.resample_timestamps(
-            timestamps, self.detection_sfreq, X[1].info['sfreq'])
-
-        epochs_width = (np.abs(self.epochs_window[0]) +
-                        np.abs(self.epochs_window[1])) * X[1].info['sfreq']
-        epochs_width = np.int32(epochs_width)
-        epochs_times = np.linspace(
-                    self.epochs_window[0], self.epochs_window[1], epochs_width)
-        channels = mne.pick_types(X[1].info, meg=True)
-        n_clusters = len(np.unique(clusters))
-        all_clusters = np.int32(np.unique(clusters))
-        array_shape = (n_clusters, len(channels), len(epochs_times))
-        clusters_lib_evoked = xr.DataArray(
-            np.zeros(array_shape),
-            dims=("cluster_id", "meg_channels", "cluster_lib_times"),
-            coords={
-                "cluster_id": all_clusters,
-                "meg_channels": channels,
-                "cluster_lib_times": epochs_times},
-            name="clusters_lib_evoked")
-
-        fwd_vertno = np.hstack([h['vertno'] for h in self.fwd['src']])
-        array_shape = (n_clusters, len(fwd_vertno), len(epochs_times))
-        clusters_lib_sources = xr.DataArray(
-            np.zeros(array_shape),
-            dims=("cluster_id", "fwd_vertno", "cluster_lib_times"),
-            coords={
-                "cluster_id": all_clusters,
-                "fwd_vertno": fwd_vertno,
-                "cluster_lib_times": epochs_times},
-            name="clusters_lib_sources")
-
-        clusters_lib_slope_timepoints = xr.DataArray(
-            np.zeros((n_clusters, 3)),
-            dims=("cluster_id", "spike_slope_timepoints"),
-            coords={
-                "cluster_id": all_clusters,
-                "spike_slope_timepoints": ['baseline', 'slope', 'peak']
-                },
-            name="clusters_lib_slope_timepoints")
-
-        for cluster in all_clusters:
-            # select timestamps for the cluster
-            times = timestamps[clusters == cluster]
-            # add first sample
-            times += X[1].first_samp
-            # Create epochs for the cluster
-            epochs = create_epochs(
-                X[1], times, tmin=self.epochs_window[0],
-                tmax=self.epochs_window[1])
-            # Create Evoked
-            evoked = epochs.average()
-            clusters_lib_evoked.loc[
-                cluster, :, :] = evoked.data[:, :epochs_width]
-
-            # minimum norm
-            stc, label_ts = self.minimum_norm(evoked)
-
-            clusters_lib_sources.loc[
-                cluster, :, :] = stc.data[:, :epochs_width]
-
-            # Slope components
-            # t1 - slope (20%), t2 - slope (50%), t3 - peak
-            slope_times = onset_slope_timepoints(label_ts)
-
-            # Update final atoms table for ROC and AtomViewer
-            clusters_lib_slope_timepoints.loc[
-                cluster, :] = slope_times
-
-        X[0]['clusters_lib_evoked'] = clusters_lib_evoked
-        X[0]['clusters_lib_sources'] = clusters_lib_sources
-        X[0]['clusters_lib_slope_timepoints'] = clusters_lib_slope_timepoints
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        assert X[0].time.attrs['sfreq'] == X[1].info['sfreq'], (
+            "Wrong sfreq of the fif file or database time coordinate")
+        spikes = check_and_read_from_dataset(
+            X[0], 'spike', dict(detection_property='detection'))
+        detection_mask = spikes > 0
+        clusters = check_and_read_from_dataset(
+            X[0], 'spike', dict(detection_property='cluster'))
+        sensors = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property='sensors'),
+            dtype=np.int64)
+
+        all_clusters = np.int32(np.unique(clusters[detection_mask]))
+        clusters_properties = np.zeros((len(all_clusters), 3))
+        n_times = len(X[0].time_evoked.values)
+
+        evokeds = []
+        for cluster in all_clusters:
+            evoked = self.average_cluster(
+                X[1], detection_mask, clusters, cluster)
+            check_and_write_to_dataset(
+                X[0], 'evoked', evoked.data[:, :n_times],
+                dict(cluster=cluster))
+            evokeds.append(evoked)
+
+        inverse_operator = {}
+        for sensor_ind in np.unique(sensors):
+            sensor_type = 'grad' if sensor_ind == 0 else 'mag'
+            assert sensor_type in X[0].sensors.values, (
+                f"Sensors with the type {sensor_type} are not in the sensors"
+                f"coordinates ({X[0].sensors.values}) in the database.")
+            info, fwd, cov = self.pick_sensors(
+                self.info, self.fwd, sensor_type)
+            inverse_operator[sensor_type] = make_inverse_operator(
+                info, fwd, cov, depth=None, fixed=False)
+
+            for n, cluster in enumerate(all_clusters):
+                evoked_sens = evokeds[n].copy().pick_types(meg=sensor_type)
+                # minimum norm
+                stc, label_ts = self.minimum_norm(
+                    evoked_sens, inverse_operator[sensor_type])
+                check_and_write_to_dataset(
+                    X[0], 'mne_localization', stc.data[:, :n_times],
+                    dict(sensors=sensor_type, cluster=cluster))
+                if sensors[n] == sensor_ind:
+                    clusters_properties[n, :] = onset_slope_timepoints(
+                        label_ts[0].mean(axis=0))
+
+        check_and_write_to_dataset(
+            X[0], 'cluster_properties', clusters_properties, dict(
+                cluster_property=['time_baseline', 'time_slope', 'time_peak']))
         logging.info("Clusters are localized.")
         return X
 
     def minimum_norm(self, evoked: Union[mne.Evoked, mne.EvokedArray],
+                     inverse_operator: mne.minimum_norm.InverseOperator,
                      inv_method: str = 'MNE') -> Tuple[
                          mne.SourceEstimate, np.ndarray]:
         snr = 3.0
         lambda2 = 1.0 / snr ** 2
         stc = apply_inverse(
-            evoked, self.inverse_operator, lambda2, inv_method, pick_ori=None)
-        label_ts = self.make_labels_ts(stc, self.inverse_operator)
+            evoked, inverse_operator, lambda2, inv_method, pick_ori=None)
+        label_ts = self.make_labels_ts(stc, inverse_operator)
         return stc, label_ts
 
-    def resample_timestamps(self, timestamps: np.ndarray,
-                            from_sfreq: float = 200.,
-                            to_sfreq: float = 1000.) -> np.ndarray:
-        return (timestamps / from_sfreq) * to_sfreq
+    def average_cluster(self, meg_data: mne.io.Raw, detection_mask: np.ndarray,
+                        clusters: np.ndarray, cluster: int) -> mne.Evoked:
+        # select timestamps for the cluster
+        cluster_mask = detection_mask & (clusters == cluster)
+        times = np.where(cluster_mask)[0]
+        # add first sample
+        times += meg_data.first_samp
+        # Create epochs for the cluster
+        epochs = create_epochs(
+            meg_data, times, tmin=self.epochs_window[0],
+            tmax=self.epochs_window[1])
+        # Create Evoked
+        return epochs.average()
+
+
+class ForwardToMNI(Localization, BaseEstimator, TransformerMixin):
+    """Save MNI coordinates of all Forward model sources.
+    """
+    def __init__(self, case: CaseManager, spacing='ico5'):
+        self.setup_fwd(case, sensors=True, spacing=spacing)
+        self.spacing = spacing
+
+    def fit(self, X: Tuple[xr.Dataset, Any], y=None):
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        fwd_source_coords = []
+        for hemi in [0, 1]:
+            hemi_mni = mne.vertex_to_mni(
+                self.fwd['src'][hemi]['vertno'], hemis=hemi,
+                subject=self.case_name, subjects_dir=self.freesurfer_dir)
+            fwd_source_coords.append(hemi_mni)
+        fwd_source_coords = np.vstack(fwd_source_coords)
+        check_and_write_to_dataset(
+            X[0], 'fwd_mni_coordinates', fwd_source_coords)
+        return X
 
 
 class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
-    def __init__(self, case: CaseManager,
+    def __init__(self,
+                 case: CaseManager,
                  sensors: Union[str, bool] = True,
                  smoothing_steps_one_cluster: int = 3,
                  smoothing_steps_final: int = 10,
                  amplitude_threshold: float = 0.5,
-                 min_sources: int = 10):
-        self.setup_fwd(case, sensors)
+                 min_sources: int = 10,
+                 spacing='ico5'):
+        self.setup_fwd(case, sensors, spacing=spacing)
+        self.spacing = spacing
         self.smoothing_steps_one_cluster = smoothing_steps_one_cluster
         self.smoothing_steps_final = smoothing_steps_final
         self.amplitude_threshold = amplitude_threshold
         self.min_sources = min_sources
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
-        n_clusters = len(X[0].cluster_id)
-        for time in ['peak', 'slope']:
+        return self
+
+    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+        clusters = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['cluster_id']),
+            dtype=np.int64)
+        sensors = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['sensors']),
+            dtype=np.int64)
+        baseline = check_and_read_from_dataset(
+            X[0], 'cluster_properties',
+            dict(cluster_property=['time_baseline']), dtype=np.int64)
+        slope = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['time_slope']),
+            dtype=np.int64)
+        peak = check_and_read_from_dataset(
+            X[0], 'cluster_properties', dict(cluster_property=['time_peak']),
+            dtype=np.int64)
+        stc_clusters = check_and_read_from_dataset(
+            X[0], 'mne_localization')
+
+        n_clusters = len(clusters)
+        for slope_time, slope_name in zip([baseline, slope, peak],
+                                          ['baseline', 'slope', 'peak']):
             clusters_stcs = []
-            for cluster in X[0].cluster_id.values:
-                # Select slope timepoint from database
-                slope_time = X[0]['clusters_lib_slope_timepoints'].loc[
-                    cluster, time].values
-                slope_time = np.int64(slope_time)
-                # Select SourceEstimate data from Datbase
-                stc_cluster = X[0][
-                    'clusters_lib_sources'].loc[cluster].values[:, slope_time]
+            for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
+                stc_cluster = stc_clusters[
+                    sens, cluster, :, slope_time[i]].squeeze()
                 # Binarize SourceEstimate
                 stc_cluster_bin = self.binarize_stc(
                     stc_cluster, self.fwd, self.smoothing_steps_one_cluster,
@@ -510,9 +580,8 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
             iz_prediciton = self.binarize_stc(
                 iz_prediciton, self.fwd, self.smoothing_steps_final,
                 self.amplitude_threshold, self.min_sources)
-            X[0]["iz_predictions"].loc[f'alphacsc_{time}', :] = iz_prediciton
-        return self
-
-    def transform(self, X) -> Tuple[xr.Dataset, Any]:
+            check_and_write_to_dataset(
+                X[0], 'iz_prediction', iz_prediciton, dict(
+                    iz_prediction_timepoint=slope_name))
         logging.info("Irritative zone prediction using clusters is finished.")
         return X

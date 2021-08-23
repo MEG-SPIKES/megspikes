@@ -1,5 +1,4 @@
 import re
-import traceback
 import warnings
 from pathlib import Path
 from typing import List, Union
@@ -25,19 +24,16 @@ class CaseManager():
             the name of the case
 
         """
-        # Root folders
-        self.code_source = Path.cwd()
-
         self.case = case
-
         self.root = Path(root)
-
         self.freesurfer_dir = free_surfer
-
         # Read case info (Excel)
         self.read_case_info()
-
-        self.dataset = self.case_meg / f"{case}_results.nc"
+        self.dataset = self.case_meg / f"{case}_alphacsc_results.nc"
+        self.cluster_dataset = (
+            self.case_meg / f"{case}_alphacsc_cluster_results.nc")
+        self.manual_cluster_dataset = (
+            self.case_meg / f"{case}_manual_cluster_results.nc")
 
     def read_case_info(self):
         case = self.case
@@ -165,7 +161,7 @@ class CaseManager():
             fwd_name = self.basic_folders['forward_model']
             fwd_name = fwd_name / f'forward_{spacing}.fif'
             fwd, bem, src, trans = self._prepare_forward_model(
-                fwd_name, self.info, spacing='ico5', n_jobs=7, fixed=False)
+                fwd_name, self.info, spacing=spacing, n_jobs=7, fixed=False)
 
             if isinstance(sensors, str):
                 fwd = mne.pick_types_forward(fwd, meg=sensors)

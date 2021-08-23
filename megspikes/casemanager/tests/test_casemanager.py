@@ -13,8 +13,7 @@ def run_simulation():
     sample_path = sample_path / 'tests_data' / 'test_casemanager'
     sample_path.mkdir(exist_ok=True, parents=True)
     sim = Simulation(sample_path)
-    sim.load_mne_dataset()
-    sim.simulate_data_structure()
+    sim.simulate_dataset()
     return sim
 
 

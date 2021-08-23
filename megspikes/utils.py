@@ -1,12 +1,67 @@
-# -*- coding: utf-8 -*-
-from typing import Union, List, Tuple, Any
 from pathlib import Path
+from typing import List, Tuple, Union, Any
+
 import mne
+from mne.source_space import _check_mri
+
+try:
+    # mne 0.23
+    from mne.source_space import _read_mri_info
+except Exception:
+    # mne 0.24
+    from mne._freesurfer import _read_mri_info
+
+import nibabel as nb
 import numpy as np
+from mne.fixes import _get_img_fdata
+from mne.transforms import apply_trans, invert_transform
 from scipy import signal
 from scipy.ndimage.filters import gaussian_filter
-import xarray as xr
+from scipy.spatial import Delaunay
 from sklearn.base import BaseEstimator, TransformerMixin
+
+mne.set_log_level("ERROR")
+
+
+def prepare_data(data: mne.io.Raw,
+                 meg: Union[str, bool],
+                 filtering: Union[None, List[float]],
+                 resample: Union[None, float],
+                 alpha_notch: Union[None, float]
+                 ) -> mne.io.Raw:
+    """Preprocess raw MEG data for analysis.
+
+    Parameters
+    ----------
+    data : mne.io.Raw
+        raw meg fif data
+    meg : Union[str, bool]
+        'grad', 'mag' or True
+    filtering : Union[None, List[float]]
+        List[highpass, lowpass, notch]
+    resample : Union[None, float]
+        frequency for the resampling in Hz
+    alpha_notch : Union[None, float]
+        alpha frequency
+
+    Returns
+    -------
+    mne.io.Raw
+        preprocessed raw data
+    """
+    data.pick_types(
+        meg=meg, eeg=False, stim=False, eog=False, ecg=False,
+        emg=False, misc=False)
+    if filtering is not None:
+        data.filter(filtering[0], filtering[1])
+        data.notch_filter(filtering[2])
+
+    if alpha_notch:
+        data.notch_filter(alpha_notch, trans_bandwidth=2.0)
+
+    if resample:
+        data = data.resample(resample, npad="auto")
+    return data
 
 
 class PrepareData(BaseEstimator, TransformerMixin):
@@ -34,6 +89,8 @@ class PrepareData(BaseEstimator, TransformerMixin):
     mne.io.Raw
 
     """
+    prepare_data = staticmethod(prepare_data)
+
     def __init__(self,
                  data_file: Union[str, Path, None] = None,
                  sensors: Union[str, bool] = True,
@@ -46,33 +103,20 @@ class PrepareData(BaseEstimator, TransformerMixin):
         self.resample = resample
         self.alpha_notch = alpha_notch
 
-    def fit(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]], y=None):
+    def fit(self, X, y=None):
         return self
 
-    def transform(self, X: Union[Any, Tuple[xr.Dataset, mne.io.Raw]],
-                  ) -> Tuple[Any, mne.io.Raw]:
-        if isinstance(X, tuple):
-            data = self._prepare_data(data=X[1])
-            return (X[0], data)
+    def transform(self, X: Union[Any, mne.io.Raw]) -> mne.io.Raw:
+        if isinstance(X, str) or isinstance(X, Path):
+            data = mne.io.read_raw_fif(X, preload=True)
+        elif isinstance(X, mne.io.Raw) or isinstance(X, mne.io.RawArray):
+            data = X
         else:
-            data = self._prepare_data(data=None)
-            return (X, data)
-
-    def _prepare_data(self, data: Union[None, mne.io.Raw]) -> mne.io.Raw:
-        if data is None:
             data = mne.io.read_raw_fif(self.data_file, preload=True)
-        data.pick_types(
-            meg=self.sensors, eeg=False, stim=False, eog=False, ecg=False,
-            emg=False, misc=False)
-        if self.filtering is not None:
-            data.filter(self.filtering[0], self.filtering[1])
-            data.notch_filter(self.filtering[2])
 
-        if self.alpha_notch:
-            data.notch_filter(self.alpha_notch, trans_bandwidth=2.0)
-
-        if self.resample:
-            data = data.resample(self.resample, npad="auto")
+        data = self.prepare_data(
+            data=data, meg=self.sensors, filtering=self.filtering,
+            alpha_notch=self.alpha_notch, resample=self.resample)
         return data
 
 
@@ -81,8 +125,6 @@ def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
                   sensors: Union[str, bool] = True,):
     '''
     Here we create epochs for events
-    NOTE: !!! if the difference between detections is 1 sample one of the
-    events is skipped
 
     Parameters
     ----------
@@ -102,6 +144,11 @@ def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
     -------
     epochs : MNE epochs
         Preloaded epochs for each detected event.
+
+    Notes
+    -----
+    If the difference between detections is 1 sample one of the
+    events is skipped
 
     '''
     meg_data.load_data()
@@ -139,9 +186,13 @@ def onset_slope_timepoints(label_ts: np.ndarray,
                            peaks_rel_hight: float = 0.6
                            ) -> np.ndarray:
     """ Find the peak of the spike, 50% and 20% of the slope.
+        Slope components:
+            t1 - baseline (20% of the slope)
+            t2 - slope (50%)
+            t3 - peak
     """
     # Smooth lables timeseries
-    slope = gaussian_filter(label_ts[0].mean(axis=0), sigma=sigma)
+    slope = gaussian_filter(label_ts, sigma=sigma)
     # Find all peaks TODO:, wlen=100
     peaks, properties = signal.find_peaks(slope, width=peaks_width)
     assert len(peaks) > 0, "No peaks detected"
@@ -158,7 +209,135 @@ def onset_slope_timepoints(label_ts: np.ndarray,
     return slope_times
 
 
+def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
+                 subject: str, fs_sbj_dir: Union[str, Path],
+                 fsave: Union[str, Path]) -> None:
+    """Convert mne.SourceEstimate to NIfTI image.
+    Affine transformation is in the original T1 MRI image. This is usefull for
+    visual comparison results in ITK-SNAP or similar software.
+
+    Parameters
+    ----------
+    stc : mne.SourceEstimate
+        SourceEstimate to convert to CovexHull and save as NIfTI image
+    fwd : mne.Forward
+        Forward model with the same number of sources as SourceEstimate
+    subject : str
+        Subject name in FreeSurfer folder
+    fs_sbj_dir : Union[str, Path]
+        Path to the FreeSurfer folder
+    fsave : Union[str, Path]
+        Path to save NIfTI image
+    """
+    src = fwd['src']
+    mri_fname = _check_mri('T1.mgz', subject, fs_sbj_dir)
+
+    # Load the T1 data
+    _, vox_mri_t, mri_ras_t, _, _, nim = _read_mri_info(
+        mri_fname, units='mm', return_img=True)
+    mri_vox_t = invert_transform(vox_mri_t)['trans']
+    del vox_mri_t
+    data = np.zeros(_get_img_fdata(nim).shape)
+
+    lh_coordinates = src[0]['rr'][stc.lh_vertno]*1000  # MRI coordinates
+    lh_coordinates = apply_trans(mri_vox_t, lh_coordinates)
+    lh_data = stc.lh_data
+    lh_coordinates = lh_coordinates[lh_data[:, 0] > 0, :]
+    lh_coordinates = np.int32(lh_coordinates)
+    data[lh_coordinates[:, 0], lh_coordinates[:, 1], lh_coordinates[:, 2]] = 1
+
+    rh_coordinates = src[1]['rr'][stc.rh_vertno]*1000  # MRI coordinates
+    rh_coordinates = apply_trans(mri_vox_t, rh_coordinates)
+    rh_data = stc.rh_data
+    rh_coordinates = rh_coordinates[rh_data[:, 0] > 0, :]
+    rh_coordinates = np.int32(rh_coordinates)
+    data[rh_coordinates[:, 0], rh_coordinates[:, 1], rh_coordinates[:, 2]] = 1
+
+    test_points = np.array(np.where(data == 0)).T
+
+    # create convex hull
+    for coords in [lh_coordinates, rh_coordinates]:
+        if coords.shape[0] != 0:
+            dhull = Delaunay(coords)
+            # find all points inside convex hull
+            points_inside = test_points[
+                dhull.find_simplex(test_points) >= 0]
+            data[points_inside[:, 0],
+                 points_inside[:, 1],
+                 points_inside[:, 2]] = 1
+    affine = nim.affine  # .dot(mri_ras_t['trans'])
+    nb.save(nb.Nifti1Image(data, affine), fsave)
+
+
+def spike_snr_all_channels(data: np.ndarray, peak):
+    # data: trials, channels, times
+    mean_peak = (data[:, :, peak-20:peak+20]**2).mean(axis=-1).mean(0)
+    var_noise = data[:, :, :].var(axis=-1).mean(0)
+    # snr = (mean_peak / var_noise).mean()
+    snr = 10*np.log10((mean_peak / var_noise).mean())
+    return snr
+
+
+def spike_snr_max_channel(data: np.ndarray, peak, n_max_channels=20):
+    # data: trials, channels, times
+    max_ch = np.argsort(
+        (data[:, :, peak-20:peak+20]**2).mean(
+            axis=-1).mean(axis=0))[::-1][:n_max_channels]
+    mean_peak = (data[:, max_ch, peak-20:peak+20]**2).mean(axis=-1).mean(0)
+    var_noise = data[:, max_ch, :].var(axis=-1).mean(0)
+    # snr = (mean_peak / var_noise).mean()
+    snr = 10*np.log10((mean_peak / var_noise).mean())
+    return snr, max_ch
+
+
+def labels_to_mni(labels: List[mne.Label], fwd: mne.Forward,
+                  subject: str, subjects_dir: str) -> Tuple[
+                      np.ndarray, np.ndarray, List[List[int]]]:
+    """Convert labels to mni coordinates.
+
+    Parameters
+    ----------
+    labels : List[mne.Label]
+        List of a FreeSurfer/MNE label
+    fwd : mne.Forward
+        MNE Python forward model
+    subject : str
+        FreeSurfer subject name
+    subjects_dir : str
+        FreeSurfer subjects folder
+
+    Returns
+    -------
+    np.ndarray
+        array with MNI coordinates of the resection area.
+    np.ndarray
+        vertices like list of np.ndarray with non-zero elements for sources
+        included in labels.
+    List[List[int]]
+        List of labels vertex indices
+    """
+    vertices = [i['vertno'] for i in fwd['src']]
+    data = [np.zeros(len(vertices[i])) for i in [0, 1]]
+    for lab in range(len(labels)):
+        label = labels[lab]
+        hemi = 0 if label.hemi == 'lh' else 1
+        for n, i in enumerate(vertices[hemi]):
+            if i in label.vertices:
+                data[hemi][n] = lab + 1
+    labels_mni = []
+    for hemi in [0, 1]:
+        l_mni = mne.vertex_to_mni(
+            vertices[hemi][data[hemi] != 0],
+            hemis=hemi, subject=subject,
+            subjects_dir=subjects_dir)
+        if l_mni.size != 0:
+            labels_mni.append(l_mni)
+    data = np.hstack(data)
+    return np.vstack(labels_mni), data, vertices
+
+
 class ToFinish(TransformerMixin, BaseEstimator):
+    """Empty template to finish sklearn Pipeline."""
     def __init__(self) -> None:
         pass
 

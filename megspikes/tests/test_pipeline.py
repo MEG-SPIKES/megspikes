@@ -2,46 +2,96 @@ import os.path as op
 from pathlib import Path
 
 import pytest
-from megspikes.database.database import Database
-from megspikes.simulation.simulation import Simulation
-from megspikes.pipeline import make_full_pipeline
+from megspikes.pipeline import (aspire_alphacsc_pipeline,
+                                iz_prediction_pipeline,
+                                read_detection_iz_prediction_pipeline,
+                                update_default_params)
 
 
-@pytest.fixture(name='simulation')
+@pytest.fixture(scope="module", name='test_sample_path')
 def fixture_data():
     sample_path = Path(op.dirname(__file__)).parent.parent
     sample_path = sample_path / 'tests_data' / 'test_pipeline'
     sample_path.mkdir(exist_ok=True, parents=True)
-
-    sim = Simulation(sample_path)
-    sim.load_mne_dataset()
-    sim.simulate_dataset(length=10)
-    return sim
+    return sample_path
 
 
-@pytest.mark.pipeline
 @pytest.mark.happy
 @pytest.mark.slow
-def test_pipeline(simulation):
-    n_ica_components = 3
-    n_ica_peaks = 20
-    n_cleaned_peaks = 5
-    resample = 200.
-    n_atoms = 2  # FIXME: one atom cause bugs
-    z_hat_threshold = 1.
-    z_hat_threshold_min = 0.1
-    db = Database(n_ica_components=n_ica_components,
-                  n_detected_peaks=n_ica_peaks,
-                  n_cleaned_peaks=n_cleaned_peaks,
-                  n_atoms=n_atoms)
-    case = simulation.case_manager
-    db.read_case_info(case.fif_file, case.fwd['ico5'])
-    ds = db.make_empty_dataset()
-    ds.to_netcdf(case.dataset)  # save empty dataset
-
-    pipe = make_full_pipeline(
-        case, n_ica_components=n_ica_components, resample=resample,
-        n_ica_peaks=n_ica_peaks, n_atoms=n_atoms,
-        z_hat_threshold=z_hat_threshold,
-        z_hat_threshold_min=z_hat_threshold_min)
+def test_aspire_alphacsc_pipeline(simulation):
+    params = {
+        'n_ica_components': 5,
+        'n_runs': 2,
+        'runs': [0, 1],
+        'n_atoms': 2,  # FIXME: one atom cause bugs
+        'PeakDetection': {'width': 2},
+        'CleanDetections': {'n_cleaned_peaks': 50},
+        'SelectAlphacscEvents': {
+            'z_hat_threshold': 1.,
+            'z_hat_threshold_min': 0.1}
+    }
+    pipe = aspire_alphacsc_pipeline(
+        simulation.case_manager, update_params=params)
     _ = pipe.fit_transform(None)
+
+
+@pytest.mark.happy
+def test_iz_prediction_pipeline(simulation):
+    params = {
+        'PrepareClustersDataset': {'detection_sfreq': 1000.}
+    }
+    pipe = iz_prediction_pipeline(simulation.case_manager, params)
+    atoms_lib = {'spikes': simulation.detections}
+    raw = simulation.raw_simulation.copy()
+    _ = pipe.fit_transform((atoms_lib, raw))
+
+
+@pytest.mark.happy
+@pytest.mark.slow
+def test_read_results_iz_prediction_pipeline(simulation,
+                                             aspire_alphacsc_random_dataset):
+    params = {
+        'PrepareClustersDataset': {'detection_sfreq': 200.}
+    }
+    pipe = read_detection_iz_prediction_pipeline(simulation.case_manager,
+                                                 params)
+    _ = pipe.fit_transform((aspire_alphacsc_random_dataset,
+                            simulation.raw_simulation.copy()))
+
+
+def test_update_default_params():
+    params = {
+        'param_global': 1,
+        'param_global2': 1,
+        'param_local': {
+            'b': 5,
+            'param_global': 1},
+        'param_local_local': {
+            'param_local1': {
+                'c': 6,
+                'param_global': 1}}
+    }
+
+    updates = {
+        'param_global': 2,
+        'param_local': {
+            'b': 6},
+        'param_local_local': {
+            'param_local1': {
+                'c': 0}}
+    }
+
+    result = {
+        'param_global': 2,
+        'param_global2': 1,
+        'param_local': {
+            'b': 6,
+            'param_global': 2},
+        'param_local_local': {
+            'param_local1': {
+                'c': 0,
+                'param_global': 2}}
+    }
+
+    updated_params = update_default_params(params, updates)
+    assert updated_params == result

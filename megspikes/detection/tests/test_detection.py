@@ -3,83 +3,77 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from megspikes.database.database import Database
+from megspikes.database.database import (select_sensors)
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
-                                           PeakDetection)
+                                           PeakDetection,
+                                           CleanDetections,
+                                           DecompositionAlphaCSC,
+                                           SelectAlphacscEvents,
+                                           AspireAlphacscRunsMerging)
 from megspikes.utils import PrepareData
-from megspikes.simulation.simulation import simulate_raw_fast
 
 
-@pytest.fixture(name='fname')
-def fixture_data():
+@pytest.fixture(scope="module", name="test_sample_path")
+def sample_path2():
     sample_path = Path(op.dirname(__file__)).parent.parent.parent
     sample_path = sample_path / 'tests_data' / 'test_detection'
-    sample_path.mkdir(exist_ok=True, parents=True)
     return sample_path
 
 
-@pytest.fixture(name="db")
-def make_database():
-    n_ica_comp = 4
-    db = Database(meg_data_length=10_000, n_ica_components=n_ica_comp)
-    return db
-
-
-@pytest.fixture(name="dataset")
-def make_dataset(db, fname):
-    n_ica_comp = 4
-    n_channels = 204
-    raw_fif, cardio_ts = simulate_raw_fast(10, 1000)
-    raw_fif.save(fname=fname / 'raw_test.fif', overwrite=True)
-
-    ds = db.make_empty_dataset()
-    for sens in [0, 1]:
-        sel = dict(run=0, sensors=sens)
-        name = "ica_sources"
-        ica_sources = np.array([cardio_ts]*n_ica_comp)*5
-        ds[sel][name][:, :] = ica_sources
-        name = "ica_components"
-        ds[sel][name][:, :] = np.random.sample((n_ica_comp, n_channels))
-        name = "ica_components_localization"
-        ds[sel][name][:, :] = np.random.sample((n_ica_comp, 3))
-        name = "ica_components_gof"
-        ds[sel][name][:] = np.array([72., 85., 94., 99.])
-        name = "ica_components_kurtosis"
-        ds[sel][name][:] = np.array([2, 0.5, 8, 0])
-    return ds
+@pytest.fixture(name='spikes')
+def spikes_waveforms():
+    root = Path(op.dirname(__file__)).parent.parent
+    spikes = root / 'simulation' / 'data' / 'spikes.npy'
+    return np.load(spikes)
 
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_ica_decomposition(db, dataset, fname, sensors):
-    n_ica_comp = 4
-    dataset[dict(run=0, sensors=0)].ica_components.values *= 0
-    dataset[dict(run=0, sensors=1)].ica_components.values *= 0
+def test_ica_decomposition(aspire_alphacsc_random_dataset,
+                           simulation, sensors):
+    dataset = aspire_alphacsc_random_dataset
+    run = 0
+    n_ica_comp = len(dataset.ica_component)
+    _, sel = select_sensors(dataset, 'grad', run)
+    dataset.loc[sel].ica_components.values *= 0
+    _, sel = select_sensors(dataset, 'mag', run)
+    dataset.loc[sel].ica_components.values *= 0
 
-    pd = PrepareData(data_file=fname / 'raw_test.fif', sensors=sensors)
-    ds_channles = db.select_sensors(dataset, sensors, 0)
-    decomposition = DecompositionICA(n_components=n_ica_comp)
-    (ds_channles, data) = pd.fit_transform(ds_channles)
-    _ = decomposition.fit_transform((ds_channles, data))
-    assert dataset.ica_sources.loc[sensors, :, :].any()
+    pd = PrepareData(data_file=simulation.case_manager.fif_file,
+                     sensors=sensors, resample=dataset.time.attrs['sfreq'])
+    ds_channles, _ = select_sensors(dataset, sensors, run)
+    ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
 
-    assert dataset.ica_components.loc[sensors, 0, 50].values != 0
-    if sensors == 'mag':
-        assert dataset.ica_components.loc[sensors, 0, 200].values == 0
+    decomposition = DecompositionICA(n_ica_components=n_ica_comp)
+    data = pd.fit_transform(None)
+    (ds_channles, data) = decomposition.fit_transform((ds_channles, data))
+    assert ds_channles.ica_sources.loc[:, :].any()
+    assert ds_channles.ica_components.loc[:, :].any()
+    assert ds_channles.ica_component_properties.loc[:, 'kurtosis'].any()
 
 
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
-def test_components_selection(db, dataset, sensors):
-    ds_channles = db.select_sensors(dataset, sensors, 0)
-    selection = ComponentsSelection()
+@pytest.mark.parametrize(  # FIXME: add more tests
+    "gof,kurtosis,sel_comp,run",
+    [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0),
+     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 1)])
+def test_components_selection(aspire_alphacsc_random_dataset, sensors, gof,
+                              kurtosis, sel_comp, run):
+    dataset = aspire_alphacsc_random_dataset
+    dataset["ica_component_properties"].loc[
+        dict(sensors=sensors, ica_component_property="gof")
+        ] = np.array(gof)
+    dataset["ica_component_properties"].loc[
+        dict(sensors=sensors, ica_component_property="kurtosis")
+        ] = np.array(kurtosis)
+    run = 0
+    ds_channles, _ = select_sensors(dataset, sensors, run)
+    ds_channles['ica_component_selection'] *= 0
+    selection = ComponentsSelection(run=run)
     (results, _) = selection.fit_transform((ds_channles, None))
-    assert sum(results["ica_components_selected"].values) == 2
-
-    ds_channles = db.select_sensors(dataset, sensors, 1)
-    selection = ComponentsSelection(run=1)
-    (results, _) = selection.fit_transform((ds_channles, None))
+    assert sum(results['ica_component_selection'].values) == sum(sel_comp)
 
 
 @pytest.mark.parametrize("run,n_runs", [
@@ -96,15 +90,117 @@ def test_components_selection_detailed(run, n_runs, n_components):
 
 
 @pytest.mark.happy
-def test_peaks_detection(db, dataset):
-    name = "ica_components_selected"
-    dataset[name][:] = np.array([1., 1., 1., 1.])
-
-    ds = db.select_sensors(dataset, 'grad', 0)
+def test_peaks_detection(aspire_alphacsc_random_dataset):
+    dataset = aspire_alphacsc_random_dataset
+    dataset['ica_component_selection'] *= 0
+    dataset['ica_component_selection'] += 1
+    ds_grad, _ = select_sensors(dataset, 'grad', 0)
     peak_detection = PeakDetection(prominence=2., width=1.)
-    (results, _) = peak_detection.fit_transform((ds, None))
-    assert results["ica_peaks_timestamps"].values.any()
+    (results, _) = peak_detection.fit_transform((ds_grad, None))
+    # assert results["ica_peaks_timestamps"].values.any()
 
 
-def test_peaks_detection_details():
-    pass
+@pytest.mark.parametrize('prominence', [1, 2, 4, 7.])
+@pytest.mark.parametrize('width', [1., 5, 10.])
+def test_peaks_detection_details(spikes, prominence, width):
+    sfreq = 10_000
+    peak_detection = PeakDetection(
+        prominence=prominence, width=width, sfreq=sfreq)
+    true_peaks = []
+    for spike in spikes:
+        data = np.zeros(sfreq*3)
+        data[sfreq:sfreq+500] = spike
+        (detected_peaks, _) = peak_detection._find_peaks(data)
+        detected_peaks -= sfreq
+        true_peaks.append(np.argmax(spike))
+        assert len(detected_peaks) > 0
+        assert min(np.abs(detected_peaks - np.argmax(spike))) < 20
+
+    data = np.zeros((4, sfreq*3))
+    data[:, sfreq:sfreq+500] = spikes
+    (detected_peaks, channles) = peak_detection.find_ica_peaks(
+        data, np.array([1, 1, 1, 1]))
+    detected_peaks -= sfreq
+    for i in true_peaks:
+        assert min(np.abs(detected_peaks - i)) < 20
+    # with raises(ValueError, match="1-D array"):
+    #     find_peaks(np.array(1))
+
+
+@pytest.mark.parametrize(
+    'times,subcorr,selection,n_cleaned_peaks,diff_threshold',
+    [([400, 500, 700, 900, 1200], [0.1, 0.9, 0.9, 0.9, 0.1],
+      [0, 1, 1, 1, 0], 3, 0.5),
+     ([400, 500, 700, 900, 1200], [0.1, 0.9, 0.9, 0.9, 0.2],
+      [0, 1, 1, 1, 1], 4, 0.5),
+     ([400, 500], [0.1, 0.9],
+      [0, 1], 10, 4)])
+def test_detection_cleaning_details(times, subcorr, selection,
+                                    n_cleaned_peaks, diff_threshold):
+    clean = CleanDetections(diff_threshold=diff_threshold,
+                            n_cleaned_peaks=n_cleaned_peaks)
+    result = clean.clean_detections(np.array(times), np.array(subcorr), 200.)
+    assert (result == selection).all()
+
+
+@pytest.mark.happy
+@pytest.mark.parametrize("sensors", ["grad", "mag"])
+def test_alphacsc_decomposition(simulation, aspire_alphacsc_random_dataset,
+                                sensors):
+    dataset = aspire_alphacsc_random_dataset
+    run = 0
+    pd = PrepareData(data_file=simulation.case_manager.fif_file,
+                     sensors=sensors, resample=200.)
+    ds_channles, _ = select_sensors(dataset, sensors, run)
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')] *= 0
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')][
+            [500, 600, 700]] = 1
+    data = pd.fit_transform(None)
+    alpha = DecompositionAlphaCSC(n_atoms=len(dataset.alphacsc_atom.values))
+    results, _ = alpha.fit_transform((ds_channles, data))
+    # TODO: add tests
+
+
+@pytest.mark.happy
+@pytest.mark.parametrize("sensors", ["grad", "mag"])
+def test_alphacsc_events_selection(aspire_alphacsc_random_dataset, simulation,
+                                   sensors):
+    dataset = aspire_alphacsc_random_dataset
+    run = 0
+    pd = PrepareData(data_file=simulation.case_manager.fif_file,
+                     sensors=sensors, resample=200.)
+    ds_channles, _ = select_sensors(dataset, sensors, run)
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')] *= 0
+    ica_peaks = [300, 350, 500, 600, 700]
+    ds_channles.detection_properties.loc[
+        dict(detection_property='selected_for_alphacsc')][
+            ica_peaks] = 1
+    z_peaks = [i - 60 for i in ica_peaks]
+    ds_channles.alphacsc_z_hat[:, z_peaks] = 20
+    sel = SelectAlphacscEvents(
+        sensors=sensors, n_atoms=len(dataset.alphacsc_atom.values))
+    data = pd.fit_transform(None)
+    sel.fit_transform((ds_channles, data))
+
+
+@pytest.mark.parametrize(
+    "z_hat,ica_peaks,n_detections",
+    [([0]*100 + [1] + [0]*99, [0]*199 + [1], 0),
+     ([0]*120 + [1] + [0]*79, [0]*199 + [1], 1)])
+def test_alphacsc_events_selection_details(z_hat, ica_peaks, n_detections):
+    alpha_select = SelectAlphacscEvents()
+    detection, _ = alpha_select._find_max_z(
+        np.array(z_hat), np.array(ica_peaks), 1)
+    assert sum(detection) == n_detections
+
+
+@pytest.mark.happy
+def test_atoms_selection(simulation, aspire_alphacsc_random_dataset):
+    dataset = aspire_alphacsc_random_dataset.copy(deep=True)
+    merging = AspireAlphacscRunsMerging(runs=[0, 1, 2, 3], n_atoms=2)
+    X = merging.fit_transform(
+        (dataset, simulation.raw_simulation.copy()))
+    del X
