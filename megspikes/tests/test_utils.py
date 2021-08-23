@@ -78,8 +78,8 @@ def test_snr_estimation(simulation_epochs_grad):
     n_max_channels = 20
     snr_all = spike_snr_all_channels(data, peak_ind)
     snr_max, max_ch = spike_snr_max_channel(data, peak_ind, n_max_channels)
-    assert np.round(snr_all, 3) == 1.813
-    assert np.round(snr_max, 3) == 6.207
+    assert np.round(snr_all, 1) == 1.8
+    assert np.round(snr_max, 1) == 6.2
     assert len(max_ch) == n_max_channels
 
 
