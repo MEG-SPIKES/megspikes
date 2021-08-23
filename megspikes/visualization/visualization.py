@@ -63,12 +63,13 @@ class PlotPipeline(param.Parameterized):
         self.param.time.bounds = (0, self.data.ds.time.values[-1])
 
     def view_ica(self):
+        """View ICA components"""
         app = pn.Column(
             pn.Param(
                 self.param,
                 parameters=['sensors'],
                 default_layout=pn.Row,
-                name="Select sensors",
+                name="Select",
                 width=800
                 ),
             pn.Row(
@@ -200,8 +201,30 @@ class PlotPipeline(param.Parameterized):
     def plot_aspire_clusters(self):
         pass
 
-    def plot_alphacsc_atoms(self, ds: xr.Dataset, info: mne.Info):
+    def view_alphacsc_atoms(self):
+        """View AlphaCSC atoms"""
+        app = pn.Column(
+            pn.Param(
+                self.param,
+                parameters=['sensors', 'run'],
+                default_layout=pn.Row,
+                name="Select",
+                width=800
+                ),
+            pn.Row(
+                self._plot_alphacsc_atoms,
+                width=1000,
+                height=600,
+                scroll=True))
+        return app
+
+    @param.depends('sensors', 'run')
+    def _plot_alphacsc_atoms(self):
+        ds = self.data.ds.sel(run=self.run, sensors=self.sensors)
+        info = mne.pick_info(self.data.info, mne.pick_types(
+            self.data.info, meg=self.sensors))
         u_hat = check_and_read_from_dataset(ds, 'alphacsc_u_hat')
+        u_hat = u_hat[:, self.data.ds.channel_names.attrs[self.sensors]]
         v_hat = check_and_read_from_dataset(ds, 'alphacsc_v_hat')
         plotted_atoms = ds.alphacsc_atom.values
 
@@ -235,7 +258,8 @@ class PlotPipeline(param.Parameterized):
                    title="Temporal pattern %d" % kk)
 
         fig.tight_layout()
-        return fig
+        plt.close()
+        return pn.pane.Matplotlib(fig, tight=True)
 
     def plot_alphacsc_clusters(self, ds: xr.Dataset, raw: mne.io.Raw,
                                atom: int = 0):
