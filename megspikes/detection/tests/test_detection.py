@@ -3,16 +3,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from megspikes.database.database import (select_sensors,
-                                         read_meg_info_for_database)
+from megspikes.database.database import (select_sensors)
 from megspikes.detection.detection import (DecompositionICA,
                                            ComponentsSelection,
                                            PeakDetection,
                                            CleanDetections,
                                            DecompositionAlphaCSC,
                                            SelectAlphacscEvents,
-                                           AspireAlphacscRunsMerging,
-                                           ManualDetections)
+                                           AspireAlphacscRunsMerging)
 from megspikes.utils import PrepareData
 
 
@@ -47,7 +45,7 @@ def test_ica_decomposition(aspire_alphacsc_random_dataset,
     ds_channles, _ = select_sensors(dataset, sensors, run)
     ds_channles.ica_component_properties.loc[:, 'kurtosis'] *= 0
 
-    decomposition = DecompositionICA(n_components=n_ica_comp)
+    decomposition = DecompositionICA(n_ica_components=n_ica_comp)
     data = pd.fit_transform(None)
     (ds_channles, data) = decomposition.fit_transform((ds_channles, data))
     assert ds_channles.ica_sources.loc[:, :].any()
@@ -206,18 +204,3 @@ def test_atoms_selection(simulation, aspire_alphacsc_random_dataset):
     X = merging.fit_transform(
         (dataset, simulation.raw_simulation.copy()))
     del X
-
-
-@pytest.mark.happy
-def test_clusters_db_for_manual_detections(simulation):
-    db = read_meg_info_for_database(
-        simulation.case_manager.fif_file,
-        simulation.case_manager.fwd['ico5'])
-    mdet = ManualDetections(
-        simulation.case_manager.manual_cluster_dataset,
-        db,
-        simulation.detections,
-        simulation.clusters)
-    mcluster_dataset = mdet.fit_transform(
-        (None, simulation.raw_simulation.copy()))
-    del mcluster_dataset

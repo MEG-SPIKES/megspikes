@@ -53,7 +53,7 @@ class PlotDetections(Localization):
         return atoms_properties
 
 
-class PlotPipeline(param.Parameterized):
+class DetectionsViewer(param.Parameterized):
     run = param.Selector(default=0, label="Run")
     ica_comp = param.Selector(default=0, label="ICA component")
     sensors = param.Selector(default='grad', objects=['mag', 'grad'],
@@ -392,30 +392,6 @@ class PlotPipeline(param.Parameterized):
         pass
 
 
-def plot_epochs_snr(epochs: mne.Epochs, event_name: str, peak_ind: int = 500,
-                    n_max_channels: int = 20):
-    data = epochs[event_name].get_data()
-    snr_all = spike_snr_all_channels(data, peak_ind)
-    snr_max, max_ch = spike_snr_max_channel(data, peak_ind, n_max_channels)
-
-    fig, ax = plt.subplots(1, 2, figsize=(14, 3), dpi=100)
-    abs_data = data**2
-    ax[0].plot(abs_data.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
-    ax[0].plot(abs_data.mean(axis=1).mean(0), c='r')
-    ax[0].set_title(f'SNR all channels: {snr_all:.2}dB')
-    ax[0].set_xlabel('$Time [ms]$')
-    ax[0].set_ylabel('$Amplitude^2$')
-
-    max_chs = data[:, max_ch, :]**2
-    ax[1].plot(max_chs.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
-    ax[1].plot(max_chs.mean(axis=1).mean(0), c='r')
-    ax[1].set_title(f'SNR {n_max_channels} max channels: {snr_max:.2}dB')
-    ax[1].set_xlabel('$Time [ms]$')
-    ax[1].set_ylabel('$Amplitude^2$')
-    plt.suptitle(f"Event {event_name}")
-    return fig
-
-
 class PlotClusters(Localization):
     """Plot detected spikes average and localization.
     """
@@ -536,3 +512,27 @@ class ClusterSlopeViewer(param.Parameterized):
                 )
             )
         return app
+
+
+def plot_epochs_snr(epochs: mne.Epochs, event_name: str, peak_ind: int = 500,
+                    n_max_channels: int = 20):
+    data = epochs[event_name].get_data()
+    snr_all = spike_snr_all_channels(data, peak_ind)
+    snr_max, max_ch = spike_snr_max_channel(data, peak_ind, n_max_channels)
+
+    fig, ax = plt.subplots(1, 2, figsize=(14, 3), dpi=100)
+    abs_data = data**2
+    ax[0].plot(abs_data.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
+    ax[0].plot(abs_data.mean(axis=1).mean(0), c='r')
+    ax[0].set_title(f'SNR all channels: {snr_all:.2}dB')
+    ax[0].set_xlabel('$Time [ms]$')
+    ax[0].set_ylabel('$Amplitude^2$')
+
+    max_chs = data[:, max_ch, :]**2
+    ax[1].plot(max_chs.mean(0).T, c='k', linewidth=0.3, alpha=0.5)
+    ax[1].plot(max_chs.mean(axis=1).mean(0), c='r')
+    ax[1].set_title(f'SNR {n_max_channels} max channels: {snr_max:.2}dB')
+    ax[1].set_xlabel('$Time [ms]$')
+    ax[1].set_ylabel('$Amplitude^2$')
+    plt.suptitle(f"Event {event_name}")
+    return fig

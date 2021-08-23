@@ -109,7 +109,7 @@ class PrepareData(BaseEstimator, TransformerMixin):
     def transform(self, X: Union[Any, mne.io.Raw]) -> mne.io.Raw:
         if isinstance(X, str) or isinstance(X, Path):
             data = mne.io.read_raw_fif(X, preload=True)
-        elif isinstance(X, mne.io.Raw):
+        elif isinstance(X, mne.io.Raw) or isinstance(X, mne.io.RawArray):
             data = X
         else:
             data = mne.io.read_raw_fif(self.data_file, preload=True)
