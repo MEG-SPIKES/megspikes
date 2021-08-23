@@ -1,5 +1,5 @@
 import logging
-import hvplot.xarray
+
 import matplotlib.pylab as plt
 import mne
 import numpy as np
@@ -15,6 +15,10 @@ from ..database.database import (check_and_read_from_dataset,
 from ..localization.localization import Localization
 from ..utils import (create_epochs, spike_snr_all_channels,
                      spike_snr_max_channel)
+
+# NOTE: pn.extension('tabulator') should be before hvplot.xarray
+pn.extension('tabulator')
+import hvplot.xarray  # noqa
 
 mne.set_log_level("WARNING")
 
@@ -495,6 +499,7 @@ class ClusterSlopeViewer(param.Parameterized):
                 name="Select cluster",
                 width=800
                 ),
+            # self.data.clusters_properties,
             self.table,
             pn.Param(
                 self.param,
