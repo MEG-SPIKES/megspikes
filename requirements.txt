@@ -4,8 +4,6 @@ netCDF4
 nibabel
 nilearn
 numpy
-opencv-python
-openpyxl
 pandas
 panel
 param
@@ -14,4 +12,3 @@ pyyaml
 scikit-learn
 scipy
 xarray
-xlrd
