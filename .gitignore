@@ -144,6 +144,8 @@ dmypy.json
 /tests_data/
 /tutorial_data/
 /megspikes/clusters_gui/
+/deprecated/
+/megspikes/detection/spline/
 
 # data
 *.nc
