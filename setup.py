@@ -56,8 +56,7 @@ opts = dict(name=NAME,
             include_package_data=True,
             install_requires=REQUIRES,
             python_requires=PYTHON_REQUIRES,
-            setup_requires=SETUP_REQUIRES,
-            requires=REQUIRES)
+            setup_requires=SETUP_REQUIRES)
 
 
 if __name__ == '__main__':
