@@ -17,10 +17,10 @@ pip install .
 
 ```
 
-Examples and visualization require additional dependencies that could be installed:
+Examples and visualization require additional dependencies that could be installed using the following code:
 
 ```bash
-pip install notebook hvplot pyqt5
+pip install notebook hvplot pyqt5 pyvista pyvistaqt
 
 ```
 
