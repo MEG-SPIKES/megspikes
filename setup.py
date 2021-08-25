@@ -24,7 +24,7 @@ LICENSE = 'MIT'
 PYTHON_REQUIRES = '>=3.7'
 PLATFORMS = 'any'
 
-with open("requirements.txt") as f:
+with open('requirements.txt') as f:
     REQUIRES = f.read().splitlines()
 
 
