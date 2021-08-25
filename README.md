@@ -8,6 +8,22 @@ This repository contains functions for detecting, analyzing and evaluating epile
 
 ## Installation
 
+The easiest way to install the package is using pip. You should clone the repository and install all dependencies:
+
+```bash
+git clone https://github.com/MEG-SPIKES/megspikes.git
+cd megspikes/
+pip install .
+
+```
+
+Examples and visualization require additional dependencies that could be installed:
+
+```bash
+pip install notebook hvplot pyqt5
+
+```
+
 ## Documentation
 
 ## Contributing
