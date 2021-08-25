@@ -1,3 +1,4 @@
+alphacsc @ git+https://github.com/alphacsc/alphacsc.git#egg=alphacsc-0.4.dev0
 matplotlib
 mne
 netCDF4

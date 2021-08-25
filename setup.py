@@ -26,6 +26,7 @@ PLATFORMS = 'any'
 
 with open('requirements.txt') as f:
     REQUIRES = f.read().splitlines()
+REQUIRES = [f"{i}" for i in REQUIRES]
 
 
 # Give setuptools a hint to complain if it's too old a version
