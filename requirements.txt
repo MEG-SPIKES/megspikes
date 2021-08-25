@@ -4,6 +4,7 @@ netCDF4
 nibabel
 nilearn
 numpy
+openpyxl
 pandas
 panel
 param
