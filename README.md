@@ -99,7 +99,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 
 #### Testing
 
-- pytest
+- [pytest](https://github.com/pytest-dev/pytest)
 
 ## Contributing
 
