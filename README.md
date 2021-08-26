@@ -40,6 +40,8 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](exam
 
 ## Contributing
 
+All contributors are expected to follow the [code of conduct](CONDUCT.md).
+
 ## References
 
 <a id="1">[1]</a>
