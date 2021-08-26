@@ -30,12 +30,6 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](exam
 
 ## Documentation
 
-### Parameters
-
-[aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
-
-[clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
-
 ### ASPIRE AlphaCSC pipeline
 
 Full detection pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
@@ -44,6 +38,20 @@ Full detection pipeline is presented on the figure below. The image was created 
 
 To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb).
 
+As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following main steps:
+
+1. ICA decomposition
+   1. ICA components licalization
+   2. ICA components selection
+   3. ICA peaks localization
+   4. ICA peaks cleaning
+2. AlphaCSC decomposition
+   1. AlphaCSC atoms localization
+   2. AlphaCSC events selection
+   3. AlphaCSC atoms merging
+      1. AlphaCSC atoms goodness evaluation
+      2. AlphaCSC atoms selection
+
 ### Clusters localization and the irritative area prediction
 
 Irritative zone prediction pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
@@ -51,6 +59,12 @@ Irritative zone prediction pipeline is presented on the figure below. The image 
 <img alt="ASPIRE AlphaCSC pipeline" src="resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
 
 To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb).
+
+### Parameters
+
+[aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
+
+[clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
 
 ### Dependencies
 
@@ -83,7 +97,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 - pyvista
 - pyvistaqt
 
-#### Tessting
+#### Testing
 
 - pytest
 
