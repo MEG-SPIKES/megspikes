@@ -6,6 +6,7 @@ import numpy as np
 import panel as pn
 import param
 import xarray as xr
+from nilearn import plotting
 from scipy import signal
 from sklearn import preprocessing
 
@@ -228,14 +229,51 @@ class DetectionsViewer(param.Parameterized):
                 ts.values[i, :])
         return ts
 
-    def plot_ica_peaks_localizations(self):
-        pass
+    # ------------------- ICA peaks spacial clustering --------------------- #
+    def view_ica_peak_localizations(self):
+        app = pn.Column(
+            pn.Param(
+                self.param,
+                parameters=['sensors', 'run', 'detection_type'],
+                default_layout=pn.Row,
+                name="Select",
+                width=800
+                ),
+            pn.Row(
+                self._plot_ica_peak_localizations,
+                width=1000,
+                height=400,
+                scroll=True))
+        return app
 
-    def plot_aspire_clusters(self):
-        pass
+    @param.depends('sensors', 'run', 'detection_type')
+    def _plot_ica_peak_localizations(self):
+        sel_x_mni = dict(detection_property='mni_x', run=self.run,
+                         sensors=self.sensors)
+        x_mni = self.data.dprop.sel(sel_x_mni).values
+        sel_y_mni = dict(detection_property='mni_y', run=self.run,
+                         sensors=self.sensors)
+        y_mni = self.data.dprop.sel(sel_y_mni).values
+        sel_z_mni = dict(detection_property='mni_z', run=self.run,
+                         sensors=self.sensors)
+        z_mni = self.data.dprop.sel(sel_z_mni).values
+        det_type = self.detection_type
+        if self.detection_type == 'alphacsc_detection':
+            det_type = 'selected_for_alphacsc'
+        self_detections = dict(detection_property=det_type,
+                               run=self.run, sensors=self.sensors)
+        detections = self.data.dprop.sel(self_detections).values
+
+        markers = np.vstack([x_mni, y_mni, z_mni]).T[detections != 0]
+        fig, ax = plt.subplots(figsize=(12, 7))
+        display = plotting.plot_glass_brain(
+                    None, display_mode='lzry', figure=fig, axes=ax)
+        display.add_markers(markers, marker_color='tomato', alpha=0.2)
+
+        plt.close()
+        return pn.pane.Matplotlib(fig, tight=True)
 
     # -------------------------- AlphaCSC atoms ---------------------------- #
-
     def view_alphacsc_atoms(self):
         """View AlphaCSC atoms"""
         app = pn.Column(
@@ -388,12 +426,6 @@ class DetectionsViewer(param.Parameterized):
                 time, axes=ax, show=False, colorbar=False, contours=0)
         plt.close()
         return pn.pane.Matplotlib(fig, tight=True)
-
-    def plot_clusters_library(self):
-        pass
-
-    def plot_iz_prediction(self):
-        pass
 
 
 class PlotClusters(Localization):
