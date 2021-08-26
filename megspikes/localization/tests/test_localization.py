@@ -66,13 +66,12 @@ def test_fast_rap_music(simulation):
     pk = PeakLocalization(case=case, sensors=sensors)
     pd = PrepareData(data_file=simulation.case_manager.fif_file,
                      sensors=sensors, resample=200.)
-    raw = pd.fit_transform(simulation.raw_simulation.raw_simulation.copy())
+    raw = pd.fit_transform(simulation.raw_simulation.copy())
     data = raw.get_data()
     timestamps = np.array([100, 200, 300], dtype=np.int32)
     mni_coords, subcorr = pk.fast_music(
         data, raw.info, timestamps, window=[-4, 6])  # samples, sfreq=200Hz
     for time, fast_rap in zip(timestamps, mni_coords):
-        fast_rap = fast_rap[::-1]
         evoked = mne.EvokedArray(data[:, time-4:time+6], raw.info)
         dipoles = rap_music(evoked, pk.fwd, pk.cov, n_dipoles=5)
         mni_pos = mne.head_to_mni(
@@ -113,7 +112,7 @@ def test_fast_rap_music_details(simulation):
     dip_pos = mne.head_to_mni(
             dipoles[0].pos,  pk.case_name, pk.fwd['mri_head_t'],
             subjects_dir=pk.freesurfer_dir)
-    assert np.linalg.norm(dip_pos[0] - mni_coords[0][::-1], ord=2) < 20
+    assert np.linalg.norm(dip_pos[0] - mni_coords[0], ord=2) < 20
 
 
 @pytest.mark.happy
