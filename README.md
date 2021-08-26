@@ -1,3 +1,6 @@
+<p align="center">
+  	<img alt="MEG-SPIKES " src="https://github.com/MEG-SPIKES/megspikes/blob/main/resources/logo.png" >
+
 [![Python package](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml/badge.svg)](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml)
 ![Codecov](https://img.shields.io/codecov/c/github/MEG-SPIKES/megspikes?token=JPN3YML3LY)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CONDUCT.md)
