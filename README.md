@@ -20,13 +20,6 @@ pip install .
 
 ```
 
-Examples and visualization require additional dependencies that could be installed using the following code:
-
-```bash
-pip install notebook hvplot pyqt5 pyvista pyvistaqt
-
-```
-
 ## Examples
 
 Examples of how to use this package are prepared in the [Jupyter Notebooks](examples/).
@@ -45,7 +38,7 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](exam
 
 ### ASPIRE AlphaCSC pipeline
 
-Full detection pipeline is presented on the figure below.
+Full detection pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
 <p align="center">
 <img alt="ASPIRE AlphaCSC pipeline" src="resources/aspire_alphacsc_pipeline.png"></p>
 
@@ -53,13 +46,46 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 
 ### Clusters localization and the irritative area prediction
 
-Irritative zone prediction pipeline is presented on the figure below.
+Irritative zone prediction pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
 <p align="center">
 <img alt="ASPIRE AlphaCSC pipeline" src="resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
 
 To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb).
 
 ### Dependencies
+
+#### Analysis
+
+- alphacsc
+- mne
+- nibabel
+- numpy
+- scikit-learn
+- scipy
+
+#### Data storing
+
+- pyyaml
+- pandas
+- openpyxl
+- xarray
+- netCDF4
+
+#### Visualization
+
+- matplotlib
+- nilearn
+- panel
+- param
+- notebook
+- hvplot
+- pyqt5
+- pyvista
+- pyvistaqt
+
+#### Tessting
+
+- pytest
 
 ## Contributing
 
