@@ -1,6 +1,5 @@
 <p align="center">
-<img alt="MEG-SPIKES " src="https://github.com/MEG-SPIKES/megspikes/blob/main/resources/logo.png" width="40%" height="auto">
-</p>
+<img alt="MEG-SPIKES " src="resources/logo.png" width="40%" height="auto"></p>
 
 [![Python package](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml/badge.svg)](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml)
 ![Codecov](https://img.shields.io/codecov/c/github/MEG-SPIKES/megspikes?token=JPN3YML3LY)
@@ -38,9 +37,29 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](exam
 
 ## Documentation
 
+### Parameters
+
 [aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
 
 [clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
+
+### ASPIRE AlphaCSC pipeline
+
+Full detection pipeline is presented on the figure below.
+<p align="center">
+<img alt="ASPIRE AlphaCSC pipeline" src="resources/aspire_alphacsc_pipeline.png"></p>
+
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb).
+
+### Clusters localization and the irritative area prediction
+
+Irritative zone prediction pipeline is presented on the figure below.
+<p align="center">
+<img alt="ASPIRE AlphaCSC pipeline" src="resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
+
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb).
+
+### Dependencies
 
 ## Contributing
 
