@@ -83,7 +83,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 - pyvista
 - pyvistaqt
 
-#### Tessting
+#### Testing
 
 - pytest
 
