@@ -41,7 +41,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following main steps:
 
 1. ICA decomposition
-   1. ICA components licalization
+   1. ICA components localization
    2. ICA components selection
    3. ICA peaks localization
    4. ICA peaks cleaning
@@ -70,32 +70,32 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_asp
 
 #### Analysis
 
-- alphacsc
-- mne
-- nibabel
-- numpy
-- scikit-learn
-- scipy
+- [alphacsc](https://github.com/alphacsc/alphacsc)
+- [mne](https://github.com/mne-tools/mne-python)
+- [nibabel](https://github.com/nipy/nibabel)
+- [numpy](https://github.com/numpy/numpy)
+- [scikit-learn](https://github.com/scikit-learn/scikit-learn)
+- [scipy](https://github.com/scipy/scipy)
 
 #### Data storing
 
-- pyyaml
-- pandas
+- [pyyaml](https://github.com/yaml/pyyaml)
+- [pandas](https://github.com/pandas-dev/pandas)
 - openpyxl
-- xarray
+- [xarray](https://github.com/pydata/xarray)
 - netCDF4
 
 #### Visualization
 
-- matplotlib
-- nilearn
-- panel
-- param
-- notebook
-- hvplot
-- pyqt5
-- pyvista
-- pyvistaqt
+- [matplotlib](https://github.com/matplotlib/matplotlib)
+- [nilearn](https://github.com/nilearn/nilearn)
+- [panel](https://github.com/holoviz/panel)
+- [param](https://github.com/holoviz/param)
+- [notebook](https://github.com/jupyter/notebook)
+- [hvplot](https://github.com/holoviz/hvplot)
+- [pyqt5](https://www.riverbankcomputing.com/software/pyqt/)
+- [pyvista](https://github.com/pyvista/pyvista)
+- [pyvistaqt](https://github.com/pyvista/pyvistaqt)
 
 #### Testing
 
