@@ -370,7 +370,8 @@ class Database():
 
         cluster_property_coords = xr.DataArray(
             data=['cluster_id', 'sensors', 'run', 'atom', 'pipeline_type',
-                  'n_events', 'time_baseline', 'time_slope', 'time_peak'],
+                  'n_events', 'time_baseline', 'time_slope', 'time_peak',
+                  'selected_for_iz_prediction'],
             dims=('cluster_property'),
             attrs={
                 'grad_index': 0,

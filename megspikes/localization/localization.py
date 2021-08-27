@@ -1,5 +1,6 @@
 import logging
 from typing import Any, List, Tuple, Union
+import warnings
 
 import mne
 import numpy as np
@@ -638,14 +639,63 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
         peak = check_and_read_from_dataset(
             X[0], 'cluster_properties', dict(cluster_property=['time_peak']),
             dtype=np.int64)
+        selected_for_iz_prediction = check_and_read_from_dataset(
+            X[0], 'cluster_properties',
+            dict(cluster_property=['selected_for_iz_prediction'])),
         stc_clusters = check_and_read_from_dataset(
             X[0], 'mne_localization')
 
-        n_clusters = len(clusters)
+        selected_clusters = selected_for_iz_prediction[0].flatten()
+        if (selected_clusters == 0).all():
+            warnings.warn('No clusters selected for IZ prediction.'
+                          'All clusters were selected instead.')
+            selected_clusters += 1
+        selected_clusters = selected_clusters != 0
+
         for slope_time, slope_name in zip([baseline, slope, peak],
                                           ['baseline', 'slope', 'peak']):
-            clusters_stcs = []
-            for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
+            iz_prediciton = self.make_iz_prediction(
+                stc_clusters,  slope_time, clusters, sensors,
+                selected_clusters)
+            check_and_write_to_dataset(
+                X[0], 'iz_prediction', iz_prediciton, dict(
+                    iz_prediction_timepoint=slope_name))
+        logging.info("Irritative zone prediction using clusters is finished.")
+        return X
+
+    def make_iz_prediction(self, stc_clusters: np.ndarray,
+                           slope_time: np.ndarray,
+                           clusters: np.ndarray,
+                           sensors: np.ndarray,
+                           selected_clusters: np.ndarray
+                           ) -> np.ndarray:
+        """Predict irritative zone using clusters MNE localization.
+
+        Parameters
+        ----------
+        stc_clusters : np.ndarray
+            MNE clusters' source estimate data with the shape:
+            number of sensors, number clusters, number of sources, times
+        slope_time : np.ndarray
+            the list of timepoints at which prediction should be made;
+            length is the same as the number of clusters
+        clusters : np.ndarray
+            array with cluster indices
+        sensors : np.ndarray
+            list of sensors indices for each cluster
+        selected_clusters : np.ndarray
+            bool array whether the cluster was selected or not
+
+        Returns
+        -------
+        np.ndarray
+            1D binary array with the length equal the number of sources.
+            1 means that the source was selected as an irritative area.
+        """
+        clusters_stcs = []
+        n_clusters = len(clusters)
+        for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
+            if selected_clusters[i]:  # skip if the class is not selected
                 stc_cluster = stc_clusters[
                     sens, cluster, :, slope_time[i]].squeeze()
                 # Binarize SourceEstimate
@@ -654,15 +704,10 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                     self.amplitude_threshold, self.min_sources)
                 clusters_stcs.append(stc_cluster_bin)
 
-            # Binarize stc again
-            iz_prediciton = np.stack(clusters_stcs, axis=-1).sum(axis=-1)
-            iz_prediciton[iz_prediciton < n_clusters/2] = 0
-            iz_prediciton[iz_prediciton >= n_clusters/2] = 1
-            iz_prediciton = self.binarize_stc(
-                iz_prediciton, self.fwd, self.smoothing_steps_final,
-                self.amplitude_threshold, self.min_sources)
-            check_and_write_to_dataset(
-                X[0], 'iz_prediction', iz_prediciton, dict(
-                    iz_prediction_timepoint=slope_name))
-        logging.info("Irritative zone prediction using clusters is finished.")
-        return X
+        # Binarize stc again
+        iz_prediciton = np.stack(clusters_stcs, axis=-1).sum(axis=-1)
+        iz_prediciton[iz_prediciton < n_clusters/2] = 0
+        iz_prediciton[iz_prediciton >= n_clusters/2] = 1
+        return self.binarize_stc(
+            iz_prediciton, self.fwd, self.smoothing_steps_final,
+            self.amplitude_threshold, self.min_sources)
