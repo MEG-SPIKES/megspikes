@@ -53,6 +53,11 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
 class ComponentsSelection(TransformerMixin, BaseEstimator):
     """Select ICA components for analysis.
 
+    Note
+    ----
+    ICA components selection procedure follows algorithm ASPIRE [1]_.
+    Original ASPIRE code: https://github.com/kuznesashka/ASPIRE.git
+
     Parameters
     ----------
     n_by_var : int, optional
@@ -71,6 +76,16 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         all runs in the analysis, by default 4
     n_components_if_nothing_else : int, optional
         select components by gof if no components selected
+
+    References
+    ----------
+    .. [1] Ossadtchi, A., Baillet, S., Mosher, J. C., Thyerlei, D., Sutherling,
+        W., & Leahy, R. M. (2004). Automated interictal spike detection and
+        source localization in magnetoencephalography using independent
+        components analysis and spatio-temporal clustering. Clinical
+        Neurophysiology, 115(3), 508–522.
+        https://doi.org/10.1016/j.clinph.2003.10.036
+
     """
 
     def __init__(self,
@@ -186,7 +201,11 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
 
 
 class PeakDetection(TransformerMixin, BaseEstimator):
-    """Detect peaks on the ICA components using scipy.signal.find_peaks method.
+    """Detect peaks on the ICA components base on the peaks amplitude.
+
+    See Also
+    --------
+    scipy.signal.find_peaks
 
     Parameters
     ----------
@@ -321,7 +340,25 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         sort_unique_ind = np.unique(timestamps, return_index=True)[1]
         return timestamps[sort_unique_ind], channels[sort_unique_ind]
 
-    def _find_peaks(self, data):
+    def _find_peaks(self, data: np.ndarray):
+        """Find peaks.
+
+        See Also
+        --------
+        scipy.signal.find_peaks
+        sklearn.preprocessing.robust_scale
+
+        Notes
+        -----
+        ICA sources timeseries were filtered and then scaled using
+        sklearn.preprocessing.robust_scale.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            1D ICA sources timeseries
+
+        """
         freq = np.array([self.h_filter, self.l_filter]) / (self.sfreq / 2.0)
         b, a = signal.butter(self.filter_order, freq, "pass")
         data = signal.filtfilt(b, a, data)
