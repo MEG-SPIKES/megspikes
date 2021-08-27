@@ -693,7 +693,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
             1 means that the source was selected as an irritative area.
         """
         clusters_stcs = []
-        n_clusters = len(clusters)
+        n_clusters = sum(selected_clusters)
         for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
             if selected_clusters[i]:  # skip if the class is not selected
                 stc_cluster = stc_clusters[
