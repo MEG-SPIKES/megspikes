@@ -312,7 +312,7 @@ class Database():
         n_clusters : int
             number of the detected clusters
         evoked_length : float
-            length of the cluster averages in seconds 
+            length of the cluster averages in seconds
         sfreq : float, optional
             sample frequency, by default 1000.
 
