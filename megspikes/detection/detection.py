@@ -20,6 +20,8 @@ mne.set_log_level("ERROR")
 
 
 class DecompositionICA(TransformerMixin, BaseEstimator):
+    """Decompose MEG data using fastica algorithm."""
+
     def __init__(self, n_ica_components: int = 20):
         self.n_ica_components = n_ica_components
 
@@ -49,7 +51,7 @@ class DecompositionICA(TransformerMixin, BaseEstimator):
 
 
 class ComponentsSelection(TransformerMixin, BaseEstimator):
-    """Select ICA components for analysis
+    """Select ICA components for analysis.
 
     Parameters
     ----------
@@ -70,6 +72,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
     n_components_if_nothing_else : int, optional
         select components by gof if no components selected
     """
+
     def __init__(self,
                  n_by_var: int = 10,
                  gof: float = 80.,
@@ -213,6 +216,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
     n_detections_threshold : int, optional
         minimal number of the detections, by default 2000
     """
+
     def __init__(self,
                  sign: int = -1,
                  sfreq: int = 200,
@@ -346,6 +350,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         This option is used to ensure that there are no more
         than a certain number of detections.
     """
+
     def __init__(self, diff_threshold: float = 0.5,
                  n_cleaned_peaks: int = 300) -> None:
         self.diff_threshold = diff_threshold
@@ -398,6 +403,40 @@ class CleanDetections(TransformerMixin, BaseEstimator):
 
 
 class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
+    """Decompose MEG data using AlphaCSC algorithm.
+
+    Note
+    ----
+    AlphaCSC model is fitted using MEG data cropped around ICA peaks. This is
+    done because of two main reasons: to speed up the computation and to fit
+    the model using the most interesting data segments.
+    After the fitting, full MEG recording is transformed.
+    Most of the AlphaCSC parameters are taken from [1]_.
+
+
+    Parameters
+    ----------
+    n_atoms : int, optional
+        number of atoms for AlphaCSC decomposition, by default 3
+    atoms_width : float, optional
+        AlphaCSC atoms' width in seconds, by default 0.5
+    sfreq : float, optional
+        sample frequency of the MEG data, by default 200.
+    greedy_cdl_kwarg : Dict, optional
+        additional AlphaCSC parameters, see [1]_ for more information
+    split_signal_kwarg : Dict, optional
+        additional AlphaCSC parameters, see [1]_ for more information,
+        by default { "n_splits": 5, "apply_window": True}
+    n_jobs : int, optional
+        by default 1
+
+    References
+    ----------
+    .. [1] Dupré La Tour, T., Moreau, T., Jas, M., & Gramfort, A. (2018).
+        Multivariate Convolutional Sparse Coding for Electromagnetic Brain
+        Signals. Advances in Neural Information Processing Systems (NIPS).
+    """
+
     def __init__(self, n_atoms: int = 3, atoms_width: float = 0.5,
                  sfreq: float = 200., greedy_cdl_kwarg: Dict = {
                      "rank1": True,
@@ -429,6 +468,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         self.n_times_atom = int(round(self.sfreq * self.atoms_width))
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
+        """Fit AlphaCSC model using data cropped around ICA peaks. """
         assert len(X[0].alphacsc_atom.values) == self.n_atoms, (
             "Number of atoms in Database and SelectAlphacscEvents "
             "is not equal.")
@@ -445,6 +485,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X) -> Tuple[xr.Dataset, mne.io.Raw]:
+        """Transform the full MEG recording. """
         # Transform the full MEG file
         data = X[1].get_data(picks='meg')
         z_hat = self.cdl.transform(data[None, :])[0]
@@ -463,8 +504,9 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         logging.info("AlphaCSC decomposition is done.")
         return X
 
-    def _crop_raw_around_peaks(self, ds: xr.Dataset, raw: mne.io.Raw):
-        """Crop data around selected ICA peaks to run AlphaCSC
+    def _crop_raw_around_peaks(self, ds: xr.Dataset, raw: mne.io.Raw
+                               ) -> mne.io.RawArray:
+        """Crop data around selected ICA peaks to run AlphaCSC.
 
         Parameters
         ----------
@@ -498,6 +540,15 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
 class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
     """Select best events for the atom.
 
+    Note
+    ----
+    This step is essential for the ASPIRE-AlphaCSC pipeline. Here we select
+    detections that were approwed by ICA peaks evaluation and RAP-MUSIC
+    localization and then also have high z-hat values after running AlphaCSC
+    model. This procedure should ensure the relevance of the detections.
+    As a result of this step we have clustered detections and AlphaCSC atoms
+    goodness scores which will be used to select atoms in the merging step.
+
     Parameters
     ----------
     cropped_epochs_width : float, optional
@@ -519,6 +570,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
         border of the window to search z-hat peaks,
         by default 10 samples (50 ms) FIXME: samples to ms
     """
+
     def __init__(self,
                  sensors: str = 'grad',
                  n_atoms: int = 3,
@@ -822,13 +874,31 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
 
 
 class AspireAlphacscRunsMerging(TransformerMixin, BaseEstimator):
-    """ Merge atoms from all runs into one atom's library:
-        - Estimate atom's goodness threshold. Goodness represents
-            cross-correlation of events inside the atom, number of
-            the events and atom's u_hat gof
-        - Estimate similarity between atoms using u_hat and v_hat.
-            Merge atoms if similarity is higher 0.8.
+    """ Merge atoms from all runs into one atom's library.
+
+    Note
+    ----
+    Merging procedure includes two main parts:
+    - Estimate atom's goodness threshold. Goodness represents
+        cross-correlation of events inside the atom, number of
+        the events and atom's u_hat gof
+    - Estimate similarity between atoms using u_hat and v_hat.
+        Merge atoms if similarity is higher 0.8.
+
+    Parameters
+    ----------
+    abs_goodness_threshold : float, optional
+        set goodness threshold to this value if it is larger it,
+        by default 0.9
+    max_corr : float, optional
+        cross-correlation threshold to avoid too similar clusters,
+        by default 0.8
+    runs : List[int], optional
+        runs indices, by default [0, 1, 2, 3]
+    n_atoms : int, optional
+        number of atoms in AlphaCSC decomposition, by default 3
     """
+
     def __init__(self,
                  abs_goodness_threshold: float = 0.9,
                  max_corr: float = 0.8,
