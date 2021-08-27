@@ -55,7 +55,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
 
     Note
     ----
-    ICA components selection procedure follows algorithm ASPIRE [1]_.
+    ICA components' selection procedure follows the algorithm ASPIRE [1]_.
     Original ASPIRE code: https://github.com/kuznesashka/ASPIRE.git
 
     Parameters
@@ -447,7 +447,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
     AlphaCSC model is fitted using MEG data cropped around ICA peaks. This is
     done because of two main reasons: to speed up the computation and to fit
     the model using the most interesting data segments.
-    After the fitting, full MEG recording is transformed.
+    After the model has been fitted, the full MEG recording is transformed.
     Most of the AlphaCSC parameters are taken from [1]_.
 
 

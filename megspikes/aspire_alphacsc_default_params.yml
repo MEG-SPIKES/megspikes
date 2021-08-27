@@ -42,7 +42,7 @@ ComponentsSelection: # ICA components selection using kurtosis and ICA component
   # run: 0 # run number
 
 PeakDetection: # peak detection using selected ICA components timeseries
-  sign: -1 # Detect positive or negative peaks. Multiply the data by sign value
+  sign: -1 # Detect positive or negative peaks. Multiply the data by the sign value
   sfreq: 200. # sample frequency of the ICA sources
   h_filter: 20. # highpass filter
   l_filter: 90. # lowpass filter
@@ -116,8 +116,8 @@ SelectAlphacscEvents:
   # sensors: grad
 
 AspireAlphacscRunsMerging:
-  abs_goodness_threshold: 0.9 # use this value if the mean threshold + 1 std is larger it
+  abs_goodness_threshold: 0.9 # use this value if the mean threshold + 1 std is larger than it
   max_corr: 0.8 # discard the atom from the final atom's library if the cross-correlation of spacial patterns (u) and temporal patterns (v) are above this value 
   n_atoms: 3 # the number of atoms for the AlphaCSC decomposition
-  runs: [0, 1, 2, 3] # the same as n_runs but with the run indexes
+  runs: [0, 1, 2, 3] # the same as n_runs but with the run indices
   
