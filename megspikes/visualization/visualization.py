@@ -534,8 +534,13 @@ class ClusterSlopeViewer(param.Parameterized):
                 self.data.ds.iz_prediction.sel(
                     iz_prediction_timepoint=self.timepoint).values,
                 self.data.fwd, self.data.case_name)
+            surfer_kwargs = dict(
+                hemi='both',  surface='inflated',  spacing='ico4',
+                colorbar=False, background='w', foreground='k',
+                colormap='Reds', smoothing_steps=10, alpha=1,
+                add_data_kwargs={"fmin": 0, "fmid": 0.5, "fmax": 0.8})
             self.brain = stc.plot(
-                subjects_dir=self.data.freesurfer_dir, hemi='both')
+                subjects_dir=self.data.freesurfer_dir, **surfer_kwargs)
         else:
             logging.warning("IZ prediction is running")
 
