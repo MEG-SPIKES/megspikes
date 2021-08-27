@@ -24,8 +24,8 @@ pip install .
 
 Examples of how to use this package are prepared in the [Jupyter Notebooks](examples/).
 
-- [0_simulation.ipynb](examples/0_simulation.ipynb): simulation that was used to test this package and in the other examples.
-- [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb): localization of the irritative area when spikes are already detected.
+- [0_simulation.ipynb](examples/0_simulation.ipynb): simulation used to test this package and in other examples.
+- [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb): localization of the irritative area for already detected (simulated) spikes.
 - [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb): full spikes detection pipeline and visualization of each step.
 
 ## Documentation
