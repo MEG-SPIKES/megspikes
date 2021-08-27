@@ -23,17 +23,53 @@ mne.set_log_level("ERROR")
 
 def array_to_stc(data: np.ndarray, fwd: mne.Forward, subject: str
                  ) -> mne.SourceEstimate:
-    """Convert SourceEstimate data to mne.SourceEstimate object"""
+    """Convert SourceEstimate data to mne.SourceEstimate object.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        1D array with the length equal the number of sources in the head model
+    fwd : mne.Forward
+        Head model
+    subject : str
+        Subject (case) name
+
+    Returns
+    -------
+    mne.SourceEstimate
+    """
     vertices = [i['vertno'] for i in fwd['src']]
     return mne.SourceEstimate(
         data, vertices, tmin=0, tstep=0.001, subject=subject)
 
 
 class Localization():
+    """Base class to prepare components for source localization and evaluation.
+    """
     array_to_stc = staticmethod(array_to_stc)
 
     def setup_fwd(self, case: CaseManager, sensors: Union[str, bool] = True,
-                  spacing: str = 'oct5'):
+                  spacing: str = 'oct5') -> None:
+        """Prepare objects for source localization.
+
+        Parameters
+        ----------
+        case : CaseManager
+            custom class that includes forward model, FreeSurfer folder,
+            raw.Info from the preprocessing step
+        sensors : Union[str, bool], optional
+            magnetometers, gradiometers or both, by default True
+        spacing : str, optional
+            The number of sources in the forward model. Currently accepted two
+            options: oct5 - low resolution; ico5 - high resolution. Forward
+            model is precomputed in the earlier steps in the CaseManager,
+            by default 'oct5'
+
+        Raises
+        ------
+        RuntimeError
+            Forward model should be included in the CaseManager.
+        """
         if not isinstance(case.fwd[spacing], mne.Forward):
             raise RuntimeError("CaseManager don't include forward model")
         self.sensors = sensors
@@ -47,7 +83,26 @@ class Localization():
             case.info, case.fwd[spacing], sensors)
 
     def pick_sensors(self, info: mne.Info, fwd: mne.Forward,
-                     sensors: Union[str, bool] = True):
+                     sensors: Union[str, bool] = True
+                     ) -> Tuple[mne.Info, mne.Forward, mne.Covariance]:
+        """Pick one sensors type from mne.Info and mne.Forward.
+
+        Parameters
+        ----------
+        info : mne.Info
+            info of the MEG data file
+        fwd : mne.Forward
+            valid forward model
+        sensors : Union[str, bool], optional
+            selected type of the sensors: 'grad', 'mag' or True,
+            by default True
+
+        Returns
+        -------
+        Tuple[mne.Info, mne.Forward, mne.Covariance]
+            Info, Forward model and Diagonal covariance for the for the
+            selected sensors type
+        """
         info_ = mne.pick_info(info, mne.pick_types(info, meg=sensors))
         if isinstance(sensors, str):
             fwd_ = mne.pick_types_forward(fwd, meg=sensors)
@@ -58,8 +113,8 @@ class Localization():
 
     def make_labels_ts(self, stc: mne.SourceEstimate,
                        inverse_operator: mne.minimum_norm.InverseOperator,
-                       mode: str = 'mean'):
-        """Extract labels (anatomical) time courses
+                       mode: str = 'mean') -> np.ndarray:
+        """Extract anatomical labels time courses.
 
         Parameters
         ----------
@@ -68,8 +123,8 @@ class Localization():
 
         Returns
         -------
-        label_tc
-            array
+        label_tc : np.ndarray
+            with the shape: lables by time
         """
         labels_parc = mne.read_labels_from_annot(
             subject=self.case_name,  subjects_dir=self.freesurfer_dir)
@@ -83,15 +138,41 @@ class Localization():
                      smoothing_steps: int = 3,
                      amplitude_threshold: float = 0.5,
                      min_sources: int = 10) -> np.ndarray:
-        """Binarization and smoothing of one SourceEstimate timepoint and
-        converting to mne.SourceEstimate.
+        """Binarization and smoothing of one SourceEstimate timepoint.
+           converting to mne.SourceEstimate.
 
         Parameters
         ----------
         data : np.ndarray
             1d, length is equal the number of fwd sources
+        fwd : mne.Forward
+            subject's head model
         smoothing_steps : int, optional
             smoothing individual spikes and final results, by default 3
+        amplitude_threshold : float, optional
+            select sources with the amplitude above amplitude_threshold of the
+            maximum amplitude, by default 0.5
+        min_sources : int, optional
+            select at least min_sources even if their amplitude below
+            amplitude_threshold, by default 10
+
+        Returns
+        -------
+        np.ndarray
+            binarized array with the same shape as input data
+
+        Notes
+        -----
+        We follow procedure described in [1]_.
+
+        References
+        ----------
+        .. [1] Tanaka, N., Papadelis, C., Tamilia, E., Madsen, J. R., Pearl, P.
+            L., & Stufflebeam, S. M. (2018). Magnetoencephalographic Mapping of
+            Epileptic Spike Population Using Distributed Source Analysis:
+            Comparison With Intracranial Electroencephalographic Spikes.
+            Journal of Clinical Neurophysiology, 35(4), 339–345.
+            https://doi.org/10.1097/WNP.0000000000000476
 
         """
         vertices = [i['vertno'] for i in fwd['src']]
@@ -116,12 +197,12 @@ class Localization():
 
         # Smooth final surface left hemi
         lh_data = self._smooth_binarized_stc(
-            stc, 0, smoothing_steps=smoothing_steps)
+            stc, hemi_idx=0, smoothing_steps=smoothing_steps)
         final_data[:len(stc.vertices[0])] = lh_data
 
         # Smooth final surface right hemi
         rh_data = self._smooth_binarized_stc(
-            stc, 1, smoothing_steps=smoothing_steps)
+            stc, hemi_idx=1, smoothing_steps=smoothing_steps)
         final_data[len(stc.vertices[0]):] = rh_data
         final_data[final_data > 0] = 1
 
@@ -130,7 +211,7 @@ class Localization():
 
     def _smooth_binarized_stc(self, stc: mne.SourceEstimate, hemi_idx: int,
                               smoothing_steps: int = 10):
-        """Smooth binary SourceEstimate """
+        """Smooth binary SourceEstimate. """
         vertices = stc.vertices[hemi_idx]
         tris = _get_subject_sphere_tris(
             self.case_name, self.freesurfer_dir)[hemi_idx]
