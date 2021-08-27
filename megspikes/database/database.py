@@ -28,7 +28,29 @@ class Database():
                                      n_runs: int,
                                      sfreq: float = 200.,
                                      ) -> xr.Dataset:
+        """Make empty xr.Dataset to run ASPIRE AlphaCSC pipeline.
 
+        Parameters
+        ----------
+        times : np.ndarray
+            mne.io.Raw times in seconds
+        n_ica_components : int
+            number of ICA components that will be exprected for each sensors
+            type
+        n_atoms : int
+            number of AlphaCSC atoms that will be extracted in the each run
+        atom_length : float
+            AlphaCSC atom's length in seconds
+        n_runs : int
+            number of the pipeline repetitions
+        sfreq : float, optional
+            sample frequency, by default 200.
+
+        Returns
+        -------
+        xr.Dataset
+            empty dataset prepared for the pipeline
+        """
         # ---- Prepare dimensions and coordinates ---- #
         # time coordinate
         t = xr.DataArray(
@@ -280,6 +302,25 @@ class Database():
     def make_clusters_dataset(self, times: np.ndarray, n_clusters: int,
                               evoked_length: float, sfreq: float = 1000.
                               ) -> xr.Dataset:
+        """Make empty xr.Dataset to run clusters' localization and irritative
+           area prediction.
+
+        Parameters
+        ----------
+        times : np.ndarray
+            mne.io.Raw times in seconds
+        n_clusters : int
+            number of the detected clusters
+        evoked_length : float
+            length of the cluster averages in seconds
+        sfreq : float, optional
+            sample frequency, by default 1000.
+
+        Returns
+        -------
+        xr.Dataset
+            empty dataset prepared for the pipeline
+        """
         # ---- Prepare dimensions and coordinates ---- #
         cluster = xr.DataArray(
             data=np.arange(n_clusters),
@@ -329,7 +370,8 @@ class Database():
 
         cluster_property_coords = xr.DataArray(
             data=['cluster_id', 'sensors', 'run', 'atom', 'pipeline_type',
-                  'n_events', 'time_baseline', 'time_slope', 'time_peak'],
+                  'n_events', 'time_baseline', 'time_slope', 'time_peak',
+                  'selected_for_iz_prediction'],
             dims=('cluster_property'),
             attrs={
                 'grad_index': 0,
@@ -439,6 +481,7 @@ class Database():
 
 
 class PrepareClustersDataset(BaseEstimator, TransformerMixin):
+    """Prepare xr.Dataset for the cluster's localization procedure."""
     def __init__(self, fif_file, fwd,
                  detection_sfreq: float = 200.,
                  evoked_length: float = 1.,
@@ -532,6 +575,7 @@ class PrepareClustersDataset(BaseEstimator, TransformerMixin):
 
 
 class PrepareAspireAlphacscDataset(BaseEstimator, TransformerMixin):
+    """Prepare xr.Dataset for the ASPIRE AlphaCSC detection pipeline."""
     def __init__(self,
                  fif_file: Union[str, Path],
                  fwd: mne.Forward,

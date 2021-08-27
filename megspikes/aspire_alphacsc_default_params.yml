@@ -1,37 +1,37 @@
 # NOTE: commented parameters are set dynamically
-n_runs: 4
-runs: [0, 1, 2, 3]
-n_ica_components: 20
-n_atoms: 3
-sfreq: 200.
+n_runs: 4 # the number of repetition of the steps from ICA components selection to the AlphaCSC events selection
+runs: [0, 1, 2, 3] # the same as n_runs but with the run indexes
+n_ica_components: 20  # the number of the ICA components
+n_atoms: 3 # the number of the AlphaCSC atoms
+sfreq: 200. # Hz; the sample frequency of the whole detection pipeline
 
-PrepareData:
+PrepareData: # preprocessing of the data before running the pipeline
   filtering:
     - 2. # highpass
     - 90. # lowpass
-    - 50. # line freq notch
-  resample: 200. # Hz
+    - 50. # line frequency notch
+  resample: 200. # Hz downsampling frequency
   # data_file: CaseManager.fif_file
   # sensors: grad
   # alpha_notch: 12.
 
-PrepareAspireAlphacscDataset:
-  atoms_width: 0.5
-  n_runs: 4
-  n_ica_components: 20
-  n_atoms: 3
+PrepareAspireAlphacscDataset: # prepare full resulting dataset structure
+  atoms_width: 0.5 # width of the AlphaCSC atom in seconds
+  n_runs: 4 # the number of repetition of the steps from ICA components selection to the AlphaCSC events selection
+  n_ica_components: 20 # the number of the ICA components
+  n_atoms: 3 # the number of the AlphaCSC atoms
   # fif_file: CaseManager.fif_file
   # fwd: mne.Forward
 
-DecompositionICA:
-  n_ica_components: 20
+DecompositionICA: # ICA decomposition
+  n_ica_components: 20 # the number of the ICA components
 
-ICAComponentsLocalization:
-  spacing: oct5
+ICAComponentsLocalization: # ICA components localization using equivalent current dipole (ECD) fitting
+  spacing: oct5 # the number of sources in the forward model
   # case: CaseManager
   # sensors: True
 
-ComponentsSelection:
+ComponentsSelection: # ICA components selection using kurtosis and ICA components localization goodness of fit
   n_by_var: 10 # N first components selected by variance
   gof: 80. # components dipole fitting threshold
   gof_abs: 95. # absolute dipole fitting threshold
@@ -41,35 +41,35 @@ ComponentsSelection:
   n_components_if_nothing_else: 7 # select components by gof if no components selected
   # run: 0 # run number
 
-PeakDetection:
+PeakDetection: # peak detection using selected ICA components timeseries
   sign: -1 # Detect positive or negative peaks. Multiply the data by sign value
   sfreq: 200. # sample frequency of the ICA sources
   h_filter: 20. # highpass filter
   l_filter: 90. # lowpass filter
   filter_order: 3
-  prominence: 7. # amplitude of the peaks to detect
-  prominence_min: 2. 
+  prominence: 7. # amplitude (after sklearn robust scaler and filtering) of the peaks to detect; SEE: scipy.signal.find_peaks for more details of the algorithm
+  prominence_min: 2. # the amplitude below which the threshold could not be decreased
   wlen: 2000. # refractory window around the detected peak
-  rel_height: 0.5
-  width: 10. # width of the peak in samples
-  n_detections_threshold: 2000 # minimal number of the detections
+  rel_height: 0.5 # SEE: scipy.signal.find_peaks for more details of the algorithm
+  width: 10. # width of the peak in samples; SEE: scipy.signal.find_peaks for more details of the algorithm
+  n_detections_threshold: 2000 # minimum number of the detections; decrease the amplitude threshold until this value is reached
 
-PeakLocalization:
-  spacing: oct5
-  sfreq: 200.
-  window: [-20, 30] # MUSIC window in ms
+PeakLocalization: # ICA peaks localization using MEG data
+  spacing: oct5 # the number of sources in the forward model
+  sfreq: 200. # Hz
+  window: [-20, 30] # RAP-MUSIC dipole fitting window in ms
   # case: CaseManager
-  # sensors: True
+  # sensors: True # Sensors (gradiometer ot magnetometers) to pick for the localization algorithm from the raw data 
 
-CleanDetections:
+CleanDetections: # Clean ICA peaks detection
   diff_threshold: 0.5 # refractory period between spikes in s
   n_cleaned_peaks: 300 # select N spikes using subcorr values
 
-DecompositionAlphaCSC:
-  n_atoms: 3
-  atoms_width: 0.5
-  sfreq: 200.
-  greedy_cdl_kwarg:
+DecompositionAlphaCSC: # decompose MEG data using AlphaCSC algorithm 
+  n_atoms: 3 # the number of atoms for the AlphaCSC decomposition
+  atoms_width: 0.5 # atom's width in seconds
+  sfreq: 200. # sample frequency of the raw MEG data
+  greedy_cdl_kwarg: # SEE: https://alphacsc.github.io/index.html
     rank1: yes
     uv_constraint: separate
     window: yes
@@ -89,35 +89,35 @@ DecompositionAlphaCSC:
     sort_atoms: yes
     verbose: 0
     random_state: 0
-  split_signal_kwarg:
+  split_signal_kwarg: # SEE: https://alphacsc.github.io/index.html
     n_splits: 5
     apply_window: yes
   n_jobs: 1
 
 AlphaCSCComponentsLocalization:
-  spacing: oct5
+  spacing: oct5 # the number of sources in the forward model
   # case: CaseManager
   # sensors: True
 
 SelectAlphacscEvents:
-  n_atoms: 3
+  n_atoms: 3 # the number of atoms for the AlphaCSC decomposition
   cropped_epochs_width: 1. # epochs of events in cropped data width in seconds
   atom_width: 0.5 # atom width in seconds
   sfreq: 200. # sample freq
   z_hat_threshold: 3.  # threshold for z-hat values in MAD
-  z_hat_threshold_min: 1.5
+  z_hat_threshold_min: 1.5 # continue decreasing z-hat threshold to find at least min_n_events if z-hat threshold is above z_hat_threshold_min
   window_border: 10 # samples
-  min_n_events: 15
+  min_n_events: 15 # continue decreasing z-hat threshold to find at least min_n_events if z-hat threshold is above z_hat_threshold_min
   atoms_selection_gof: 80. # GOF value threshold
-  allow_lower_gof_grad: 20.
+  allow_lower_gof_grad: 20. # allow lower GOF threshold for the gradiometers
   atoms_selection_n_events: 10 # n events threshold
   cross_corr_threshold: 0.85 # cross-correlation on the max channel
   atoms_selection_min_events: 0
   # sensors: grad
 
 AspireAlphacscRunsMerging:
-  abs_goodness_threshold: 0.9
-  max_corr: 0.8
-  n_atoms: 3
-  runs: [0, 1, 2, 3]
+  abs_goodness_threshold: 0.9 # use this value if the mean threshold + 1 std is larger it
+  max_corr: 0.8 # discard the atom from the final atom's library if the cross-correlation of spacial patterns (u) and temporal patterns (v) are above this value 
+  n_atoms: 3 # the number of atoms for the AlphaCSC decomposition
+  runs: [0, 1, 2, 3] # the same as n_runs but with the run indexes
   

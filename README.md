@@ -30,12 +30,6 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](exam
 
 ## Documentation
 
-### Parameters
-
-[aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
-
-[clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
-
 ### ASPIRE AlphaCSC pipeline
 
 Full detection pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
@@ -43,6 +37,20 @@ Full detection pipeline is presented on the figure below. The image was created 
 <img alt="ASPIRE AlphaCSC pipeline" src="resources/aspire_alphacsc_pipeline.png"></p>
 
 To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb).
+
+As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following main steps:
+
+1. ICA decomposition
+   1. ICA components localization
+   2. ICA components selection
+   3. ICA peaks localization
+   4. ICA peaks cleaning
+2. AlphaCSC decomposition
+   1. AlphaCSC atoms localization
+   2. AlphaCSC events selection
+   3. AlphaCSC atoms merging
+      1. AlphaCSC atoms goodness evaluation
+      2. AlphaCSC atoms selection
 
 ### Clusters localization and the irritative area prediction
 
@@ -52,40 +60,46 @@ Irritative zone prediction pipeline is presented on the figure below. The image 
 
 To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](examples/1_manual_pipeline.ipynb).
 
+### Parameters
+
+[aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
+
+[clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
+
 ### Dependencies
 
 #### Analysis
 
-- alphacsc
-- mne
-- nibabel
-- numpy
-- scikit-learn
-- scipy
+- [alphacsc](https://github.com/alphacsc/alphacsc)
+- [mne](https://github.com/mne-tools/mne-python)
+- [nibabel](https://github.com/nipy/nibabel)
+- [numpy](https://github.com/numpy/numpy)
+- [scikit-learn](https://github.com/scikit-learn/scikit-learn)
+- [scipy](https://github.com/scipy/scipy)
 
 #### Data storing
 
-- pyyaml
-- pandas
+- [pyyaml](https://github.com/yaml/pyyaml)
+- [pandas](https://github.com/pandas-dev/pandas)
 - openpyxl
-- xarray
+- [xarray](https://github.com/pydata/xarray)
 - netCDF4
 
 #### Visualization
 
-- matplotlib
-- nilearn
-- panel
-- param
-- notebook
-- hvplot
-- pyqt5
-- pyvista
-- pyvistaqt
+- [matplotlib](https://github.com/matplotlib/matplotlib)
+- [nilearn](https://github.com/nilearn/nilearn)
+- [panel](https://github.com/holoviz/panel)
+- [param](https://github.com/holoviz/param)
+- [notebook](https://github.com/jupyter/notebook)
+- [hvplot](https://github.com/holoviz/hvplot)
+- [pyqt5](https://www.riverbankcomputing.com/software/pyqt/)
+- [pyvista](https://github.com/pyvista/pyvista)
+- [pyvistaqt](https://github.com/pyvista/pyvistaqt)
 
 #### Testing
 
-- pytest
+- [pytest](https://github.com/pytest-dev/pytest)
 
 ## Contributing
 

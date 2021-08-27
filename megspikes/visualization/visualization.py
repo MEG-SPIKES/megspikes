@@ -13,7 +13,7 @@ from sklearn import preprocessing
 from ..casemanager.casemanager import CaseManager
 from ..database.database import (check_and_read_from_dataset,
                                  check_and_write_to_dataset)
-from ..localization.localization import Localization
+from ..localization.localization import Localization, PredictIZClusters
 from ..utils import (create_epochs, spike_snr_all_channels,
                      spike_snr_max_channel)
 
@@ -459,6 +459,7 @@ class PlotClusters(Localization):
             values='cluster_properties')
         self.clusters_properties = clusters_properties
         del self.clusters_properties['cluster_id']
+        del self.clusters_properties['atom']
         del self.clusters_properties['pipeline_type']
 
 
@@ -467,13 +468,31 @@ class ClusterSlopeViewer(param.Parameterized):
     cluster = param.Selector(default=0, label="Cluster")
     sensors = param.Selector(default='grad', objects=['mag', 'grad'],
                              label="Sensors")
+    timepoint = param.Selector(default='peak', label='Slope timepoint',
+                               objects=['baseline', 'slope', 'peak'])
     plot_stc = param.Action(lambda x: x.param.trigger('plot_stc'),
-                            label="Plot Source Estimate")
+                            label="Plot Cluster Source Estimate")
+    rerun_iz_prediction = param.Action(
+        lambda x: x.param.trigger('rerun_iz_prediction'),
+        label="Rerun IZ prediction")
+
+    plot_iz = param.Action(lambda x: x.param.trigger('plot_iz'),
+                           label="Plot IZ prediction")
     plot_evoked = param.Action(lambda x: x.param.trigger('plot_evoked'),
                                label="Plot Evoked")
     save_ds = param.Action(lambda x: x.param.trigger('save_ds'),
                            label="Save Dataset")
     fname_save_ds = param.String(label='Save dataset path')
+
+    smoothing_steps_one_cluster = param.Integer(
+        default=3, bounds=(2, 15), label="One cluster smoothing")
+    smoothing_steps_final = param.Integer(
+        default=10, bounds=(2, 15), label="Final prediction smoothing")
+    amplitude_threshold = param.Number(
+        default=0.5, bounds=(0, 1.), label="Amplitude threshold")
+    min_sources = param.Integer(
+        default=10, bounds=(5, 500), label="Minimum number of sources")
+    prediction_is_running = param.Boolean(default=False)
 
     def __init__(self, ds: xr.Dataset, case: CaseManager, **params):
         super().__init__(**params)
@@ -504,6 +523,28 @@ class ClusterSlopeViewer(param.Parameterized):
 
     @param.depends('save_ds', watch=True)
     def _save_dataset(self):
+        self.data.ds.to_netcdf(self.fname_save_ds, mode='w', format="NETCDF4",
+                               engine="netcdf4")
+        logging.warning('DS saved')
+
+    @param.depends('plot_iz', watch=True)
+    def _plot_iz_prediciton(self):
+        if not self.prediction_is_running:
+            stc = self.data.array_to_stc(
+                self.data.ds.iz_prediction.sel(
+                    iz_prediction_timepoint=self.timepoint).values,
+                self.data.fwd, self.data.case_name)
+            surfer_kwargs = dict(
+                hemi='both',  surface='inflated',  spacing='ico4',
+                colorbar=False, background='w', foreground='k',
+                colormap='Reds', smoothing_steps=10, alpha=1,
+                add_data_kwargs={"fmin": 0, "fmid": 0.5, "fmax": 0.8})
+            self.brain = stc.plot(
+                subjects_dir=self.data.freesurfer_dir, **surfer_kwargs)
+        else:
+            logging.warning("IZ prediction is running")
+
+    def _update_dataset(self):
         check_and_write_to_dataset(
             self.data.ds, 'cluster_properties',
             self.data.clusters_properties['time_slope'].values,
@@ -516,15 +557,34 @@ class ClusterSlopeViewer(param.Parameterized):
             self.data.ds, 'cluster_properties',
             self.data.clusters_properties['time_peak'].values,
             dict(cluster_property='time_peak'))
-        self.data.ds.to_netcdf(self.fname_save_ds, mode='w', format="NETCDF4",
-                               engine="netcdf4")
-        logging.warning('DS saved')
+        check_and_write_to_dataset(
+            self.data.ds, 'cluster_properties',
+            self.data.clusters_properties['selected_for_iz_prediction'].values,
+            dict(cluster_property='selected_for_iz_prediction'))
+        check_and_write_to_dataset(
+            self.data.ds, 'cluster_properties',
+            self.data.clusters_properties['selected_for_iz_prediction'].values,
+            dict(cluster_property='selected_for_iz_prediction'))
+
+    @param.depends('rerun_iz_prediction', watch=True)
+    def _rerun_iz_prediction(self):
+        self._update_dataset()
+        self.prediction_is_running = True
+        predict = PredictIZClusters(
+            case=self.data.case,
+            sensors=True,
+            smoothing_steps_one_cluster=self.smoothing_steps_one_cluster,
+            smoothing_steps_final=self.smoothing_steps_final,
+            amplitude_threshold=self.amplitude_threshold,
+            min_sources=self.min_sources)
+        self.data.ds, _ = predict.fit_transform((self.data.ds, None))
+        self.prediction_is_running = False
 
     def view(self):
         app = pn.Column(
             pn.Param(
                 self.param,
-                parameters=['cluster', 'sensors'],
+                parameters=['cluster', 'sensors', 'timepoint'],
                 # widgets={"cluster": {"widget_type": pn.widgets.Select}}
                 # widgets={"plot_stc": {"button_type": "primary"}},
                 default_layout=pn.Row,
@@ -535,7 +595,15 @@ class ClusterSlopeViewer(param.Parameterized):
             self.table,
             pn.Param(
                 self.param,
-                parameters=['plot_stc', 'plot_evoked', 'save_ds'],
+                parameters=['smoothing_steps_final', 'amplitude_threshold',
+                            'min_sources', 'rerun_iz_prediction'],
+                default_layout=pn.Row,
+                name="IZ prediction settings",
+                width=800
+                ),
+            pn.Param(
+                self.param,
+                parameters=['plot_stc', 'plot_iz', 'plot_evoked', 'save_ds'],
                 default_layout=pn.Row,
                 name="Actions",
                 width=800
