@@ -138,7 +138,8 @@ class Localization():
     def binarize_stc(self, data: np.ndarray, fwd: mne.Forward,
                      smoothing_steps: int = 3,
                      amplitude_threshold: float = 0.5,
-                     min_sources: int = 10) -> np.ndarray:
+                     min_sources: int = 10,
+                     normalize: bool = True) -> np.ndarray:
         """Binarization and smoothing of one SourceEstimate timepoint.
            converting to mne.SourceEstimate.
 
@@ -156,6 +157,10 @@ class Localization():
         min_sources : int, optional
             select at least min_sources even if their amplitude below
             amplitude_threshold, by default 10
+        normalize : bool, optional
+            normalize clusters source estimate using peak amplitude; if False
+            then slope and baseline predictions are normalized according slope
+            and baseline maximum values respectively, by default True
 
         Returns
         -------
@@ -179,7 +184,8 @@ class Localization():
         vertices = [i['vertno'] for i in fwd['src']]
 
         # normalize data
-        data /= data.max()
+        if normalize:
+            data /= data.max()
 
         # check if amplitude is too small
         if np.sum(data > amplitude_threshold) < min_sources:
@@ -605,6 +611,37 @@ class ForwardToMNI(Localization, BaseEstimator, TransformerMixin):
 
 
 class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
+    """Predict irritative area.
+
+    See Also
+    --------
+    mne.SourceEstimate
+
+    Parameters
+    ----------
+    case : CaseManager
+        [description]
+    sensors : Union[str, bool], optional
+        [description], by default True
+    smoothing_steps_one_cluster : int, optional
+        amount of smoothing for the individual clusters binary map,
+        by default 3
+    smoothing_steps_final : int, optional
+        amount of smoothing for the final prediction, by default 10
+    amplitude_threshold : float, optional
+        amplitude threshold for the SourceEstimate binarization; Note that the
+        amplitude values are between 0 and 1 because data are normalized., by
+        default 0.5
+    min_sources : int, optional
+        select at least min_sources sources it there is less sources above the
+        amplitude_threshold, by default 10
+    normalize_using_peak : bool, optional
+        normalize clusters source estimate using peak amplitude; if False then
+        slope and baseline predictions are normalized according slope and
+        baseline maximum values respectively, by default True
+    spacing : str, optional
+        the number of sources in the forward model, by default 'ico5'
+    """
     def __init__(self,
                  case: CaseManager,
                  sensors: Union[str, bool] = True,
@@ -612,6 +649,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                  smoothing_steps_final: int = 10,
                  amplitude_threshold: float = 0.5,
                  min_sources: int = 10,
+                 normalize_using_peak: bool = True,
                  spacing='ico5'):
         self.setup_fwd(case, sensors, spacing=spacing)
         self.spacing = spacing
@@ -619,6 +657,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
         self.smoothing_steps_final = smoothing_steps_final
         self.amplitude_threshold = amplitude_threshold
         self.min_sources = min_sources
+        self.normalize_using_peak = normalize_using_peak
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
@@ -651,6 +690,13 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                           'All clusters were selected instead.')
             selected_clusters += 1
         selected_clusters = selected_clusters != 0
+
+        # Normalize source estimate using peak amplitude
+        if self.normalize_using_peak:
+            for i in range(stc_clusters.shape[0]):
+                for ii in range(stc_clusters.shape[1]):
+                    stc_clusters[i, ii, :, :] /= stc_clusters[
+                        i, ii, :, peak[ii]].max()
 
         for slope_time, slope_name in zip([baseline, slope, peak],
                                           ['baseline', 'slope', 'peak']):
@@ -692,6 +738,7 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
             1D binary array with the length equal the number of sources.
             1 means that the source was selected as an irritative area.
         """
+        normalize_stc = False if self.normalize_using_peak else True
         clusters_stcs = []
         n_clusters = sum(selected_clusters)
         for i, (cluster, sens) in enumerate(zip(clusters, sensors)):
@@ -701,7 +748,8 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
                 # Binarize SourceEstimate
                 stc_cluster_bin = self.binarize_stc(
                     stc_cluster, self.fwd, self.smoothing_steps_one_cluster,
-                    self.amplitude_threshold, self.min_sources)
+                    self.amplitude_threshold, self.min_sources,
+                    normalize_stc)
                 clusters_stcs.append(stc_cluster_bin)
 
         # Binarize stc again
