@@ -11,10 +11,11 @@ ClustersLocalization:
   # sensors: True
 
 PredictIZClusters:
-  smoothing_steps_one_cluster: 3
-  smoothing_steps_final: 10
-  amplitude_threshold: 0.5
-  min_sources: 10
+  smoothing_steps_one_cluster: 3 # amount of smoothing for the individual clusters binary map
+  smoothing_steps_final: 10 # amount of smoothing for the final prediction
+  amplitude_threshold: 0.5 # amplitude threshold for the SourceEstimate binarization; Note that the amplitude values are between 0 and 1 because data are normalized.
+  min_sources: 10 # select at least min_sources sources it there is less sources above the amplitude_threshold
+  normalize_using_peak: yes # normalize clusters source estimate using peak amplitude; if False then slope and baseline predictions are normalized according slope and baseline maximum values respectively
   spacing: ico5 # the number of sources in the forward model
   # case: CaseManager
   # sensors: True
