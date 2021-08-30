@@ -436,9 +436,11 @@ class CleanDetections(TransformerMixin, BaseEstimator):
                 selection[np.where(mask)[0][subcorr_max_idx]] = 1
 
         # Select n_spikes with max subcorr
-        not_selected = np.argsort(
-            subcorr[selection == 1])[::-1][self.n_cleaned_peaks:]
-        selection[not_selected] = 0
+        selection_ind = np.where(selection > 0)[0]
+        selected_subcorrs = subcorr[selection_ind]
+        final_selection_ind = np.argsort(selected_subcorrs)[::-1]
+        not_selected = final_selection_ind[self.n_cleaned_peaks:]
+        selection[selection_ind[not_selected]] = 0
         return selection
 
 
