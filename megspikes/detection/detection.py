@@ -424,6 +424,24 @@ class CleanDetections(TransformerMixin, BaseEstimator):
 
     def clean_detections(self, timestamps: np.ndarray, subcorr: np.ndarray,
                          sfreq: float = 200.) -> np.ndarray:
+        """Exclude redundant detections from the analysis.
+        Detections cleaning is base on the RAP-MUSIC subcorr values and
+        interspike intervals.
+
+        Parameters
+        ----------
+        timestamps : np.ndarray
+            All detected ICA peaks
+        subcorr : np.ndarray
+            RAP-MUSIC subcorr values for each spike
+        sfreq : float, optional
+            sample frequency of the detections, by default 200.
+
+        Returns
+        -------
+        np.ndarray
+            binary array where 1 values indicate selected timestamps
+        """
         selection = np.zeros_like(timestamps)
         window = int(self.diff_threshold*sfreq)
         for time in range(0, int(timestamps.max()), window):
@@ -435,7 +453,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
                 # add timepoint with max subcorr value to selection
                 selection[np.where(mask)[0][subcorr_max_idx]] = 1
 
-        # Select n_spikes with max subcorr
+        # Select `n_cleaned_peaks` with max subcorr
         selection_ind = np.where(selection > 0)[0]
         selected_subcorrs = subcorr[selection_ind]
         final_selection_ind = np.argsort(selected_subcorrs)[::-1]
