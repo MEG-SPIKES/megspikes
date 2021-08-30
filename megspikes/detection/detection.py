@@ -861,7 +861,8 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
             if atom in unique_atoms:
                 atom_mask = detection_mask & (atoms == atom)
                 timestamps = np.where(atom_mask)[0]
-                # FIXME: add the first sample....
+                # add the first sample to the timestamps
+                timestamps += mag_data.first_samp
                 # make epochs only with best events for this atom
                 epochs = create_epochs(
                    mag_data, timestamps, tmin=-0.25, tmax=0.25)
