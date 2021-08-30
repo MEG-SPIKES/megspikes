@@ -33,7 +33,7 @@ ICAComponentsLocalization: # ICA components localization using equivalent curren
 
 ComponentsSelection: # ICA components selection using kurtosis and ICA components localization goodness of fit
   n_by_var: 10 # N first components selected by variance
-  gof: 80. # components dipole fitting threshold
+  gof: 70. # components dipole fitting threshold
   gof_abs: 95. # absolute dipole fitting threshold
   kurtosis_min: 1. # minimal kurtosis score of the ICA component
   kurtosis_max: 10. # maximal kurtosis score of the ICA component
@@ -49,9 +49,9 @@ PeakDetection: # peak detection using selected ICA components timeseries
   filter_order: 3
   prominence: 7. # amplitude (after sklearn robust scaler and filtering) of the peaks to detect; SEE: scipy.signal.find_peaks for more details of the algorithm
   prominence_min: 2. # the amplitude below which the threshold could not be decreased
-  wlen: 2000. # refractory window around the detected peak
+  wlen: 500. # refractory window around the detected peak
   rel_height: 0.5 # SEE: scipy.signal.find_peaks for more details of the algorithm
-  width: 10. # width of the peak in samples; SEE: scipy.signal.find_peaks for more details of the algorithm
+  width: 2. # width of the peak in samples; SEE: scipy.signal.find_peaks for more details of the algorithm
   n_detections_threshold: 2000 # minimum number of the detections; decrease the amplitude threshold until this value is reached
 
 PeakLocalization: # ICA peaks localization using MEG data
@@ -104,11 +104,11 @@ SelectAlphacscEvents:
   cropped_epochs_width: 1. # epochs of events in cropped data width in seconds
   atom_width: 0.5 # atom width in seconds
   sfreq: 200. # sample freq
-  z_hat_threshold: 3.  # threshold for z-hat values in MAD
+  z_hat_threshold: 2.5  # threshold for z-hat values in MAD
   z_hat_threshold_min: 1.5 # continue decreasing z-hat threshold to find at least min_n_events if z-hat threshold is above z_hat_threshold_min
   window_border: 10 # samples
   min_n_events: 15 # continue decreasing z-hat threshold to find at least min_n_events if z-hat threshold is above z_hat_threshold_min
-  atoms_selection_gof: 80. # GOF value threshold
+  atoms_selection_gof: 90. # GOF value threshold
   allow_lower_gof_grad: 20. # allow lower GOF threshold for the gradiometers
   atoms_selection_n_events: 10 # n events threshold
   cross_corr_threshold: 0.85 # cross-correlation on the max channel

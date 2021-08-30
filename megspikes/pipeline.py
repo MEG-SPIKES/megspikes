@@ -24,6 +24,20 @@ clusters_params = os.path.join(
 
 
 def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
+    """Create ASPIRE AlphaCSC pipeline object.
+
+    Parameters
+    ----------
+    case : CaseManager
+        This object includes head model and the link to the MEG recording
+    update_params : dict
+        Parameters to update
+
+    Returns
+    -------
+    sklearn.pipeline.Pipeline
+        [description]
+    """
     with open(aspire_alphacsc_params, 'rt') as f:
         default_params = yaml.safe_load(f.read())
     params = update_default_params(default_params, update_params)
@@ -41,7 +55,9 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
                                  **params['PrepareData'])),
                     ('load_select_dataset',
                      LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
-                    ('select_ica_components', ComponentsSelection(run=run)),
+                    ('select_ica_components',
+                     ComponentsSelection(run=run,
+                                         **params['ComponentsSelection'])),
                     ('detect_ica_peaks',
                      PeakDetection(**params['PeakDetection'])),
                     ('peaks_localization',
