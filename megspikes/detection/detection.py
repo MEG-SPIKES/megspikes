@@ -244,9 +244,9 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                  filter_order: int = 3,
                  prominence: float = 7.,
                  prominence_min: float = 2.,
-                 wlen: float = 2000.,
+                 wlen: float = 500.,
                  rel_height: float = 0.5,
-                 width: float = 10.,
+                 width: float = 2.,
                  n_detections_threshold: int = 2000) -> None:
         # FIXME: sign should be list
         self.sign = sign
@@ -318,12 +318,15 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         n_detections = 0
         while n_detections < self.n_detections_threshold:
             for ind in source_ind:
-                data = sources[ind, :]
+                data = sources[ind, :].copy()
                 for s in [self.sign]:
                     # Detect only negative peaks
                     if s == -1:
                         data *= -1
                     peaks, _ = self._find_peaks(data)
+                    logging.debug(f'Source {ind} (sign= {s}; prominence= '
+                                  f'{self.prominence}) has {len(peaks)}'
+                                  ' detections')
                     timestamps = np.append(timestamps, peaks)
                     channels = np.append(channels, np.ones_like(peaks)*ind)
 
@@ -838,6 +841,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
             if atom in unique_atoms:
                 atom_mask = detection_mask & (atoms == atom)
                 timestamps = np.where(atom_mask)[0]
+                # FIXME: add the first sample....
                 # make epochs only with best events for this atom
                 epochs = create_epochs(
                    mag_data, timestamps, tmin=-0.25, tmax=0.25)
