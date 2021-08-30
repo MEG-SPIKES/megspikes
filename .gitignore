@@ -150,3 +150,6 @@ dmypy.json
 # data
 *.nc
 *.h5
+
+# test data
+ica_sources.npy

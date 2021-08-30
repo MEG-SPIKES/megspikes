@@ -127,6 +127,21 @@ def test_peaks_detection_details(spikes, prominence, width):
     #     find_peaks(np.array(1))
 
 
+@pytest.mark.regression
+def test_ica_peaks_detection():
+    data_path = Path(op.dirname(__file__)) / 'data' / 'ica_sources.npy'
+    results_path = data_path.parent / 'ica_sources_all_detections.npy'
+    if data_path.is_file() and results_path.is_file():
+        sources = np.load(data_path)
+        results = np.load(results_path)
+        selected = np.array([1, 1, 1, 1, 1, 1, 1, 0, 1, 1])
+        peak_detection = PeakDetection()
+        det_ind, _ = peak_detection.find_ica_peaks(sources, selected)
+        assert np.isin(det_ind, results).all()
+    else:
+        pass
+
+
 @pytest.mark.parametrize(
     'times,subcorr,selection,n_cleaned_peaks,diff_threshold',
     [([400, 500, 700, 900, 1200], [0.1, 0.9, 0.9, 0.9, 0.1],
@@ -141,6 +156,28 @@ def test_detection_cleaning_details(times, subcorr, selection,
                             n_cleaned_peaks=n_cleaned_peaks)
     result = clean.clean_detections(np.array(times), np.array(subcorr), 200.)
     assert (result == selection).all()
+
+
+@pytest.mark.regression
+def test_ica_peaks_detection_cleaning():
+    data_path = (Path(op.dirname(__file__)) / 'data' /
+                 'ica_sources_all_detections_subcorrs.npy')
+    times_path = data_path.parent / 'ica_sources_all_detections.npy'
+    results_path = data_path.parent / 'ica_sources_cleaned_detections.npy'
+    if (data_path.is_file() and results_path.is_file() and
+       times_path.is_file()):
+        subcorrs = np.load(data_path)
+        times = np.load(times_path)
+        results = np.load(results_path)
+        # 1000 instead of 300 because of the repetitions in the detections
+        cleaning = CleanDetections(n_cleaned_peaks=1000)
+        selection = cleaning.clean_detections(
+            times, subcorrs, strict_threshold=False)
+        assert sum(selection) <= cleaning.n_cleaned_peaks
+        selection_ind = np.where(selection > 0)[0]
+        assert np.isin(results, times[selection_ind]).all()
+    else:
+        pass
 
 
 @pytest.mark.happy

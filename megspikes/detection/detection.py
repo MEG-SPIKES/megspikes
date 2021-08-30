@@ -150,7 +150,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
             one value (o or 1) for each ICA component. 1 means that component
             selected.
         """
-        selected = np.ones_like(kurtosis)
+        selected = np.zeros_like(kurtosis)
         selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
@@ -244,9 +244,9 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                  filter_order: int = 3,
                  prominence: float = 7.,
                  prominence_min: float = 2.,
-                 wlen: float = 2000.,
+                 wlen: float = 500.,
                  rel_height: float = 0.5,
-                 width: float = 10.,
+                 width: float = 2.,
                  n_detections_threshold: int = 2000) -> None:
         # FIXME: sign should be list
         self.sign = sign
@@ -318,12 +318,15 @@ class PeakDetection(TransformerMixin, BaseEstimator):
         n_detections = 0
         while n_detections < self.n_detections_threshold:
             for ind in source_ind:
-                data = sources[ind, :]
+                data = sources[ind, :].copy()
                 for s in [self.sign]:
                     # Detect only negative peaks
                     if s == -1:
                         data *= -1
                     peaks, _ = self._find_peaks(data)
+                    logging.debug(f'Source {ind} (sign= {s}; prominence= '
+                                  f'{self.prominence}) has {len(peaks)}'
+                                  ' detections')
                     timestamps = np.append(timestamps, peaks)
                     channels = np.append(channels, np.ones_like(peaks)*ind)
 
@@ -420,7 +423,28 @@ class CleanDetections(TransformerMixin, BaseEstimator):
         return X
 
     def clean_detections(self, timestamps: np.ndarray, subcorr: np.ndarray,
-                         sfreq: float = 200.) -> np.ndarray:
+                         sfreq: float = 200.,
+                         strict_threshold: bool = True) -> np.ndarray:
+        """Exclude redundant detections from the analysis.
+        Detections cleaning is base on the RAP-MUSIC subcorr values and
+        interspike intervals.
+
+        Parameters
+        ----------
+        timestamps : np.ndarray
+            All detected ICA peaks
+        subcorr : np.ndarray
+            RAP-MUSIC subcorr values for each spike
+        sfreq : float, optional
+            sample frequency of the detections, by default 200.
+        strict_threshold: bool, optional
+            ensure that the diff threshold is strict
+
+        Returns
+        -------
+        np.ndarray
+            binary array where 1 values indicate selected timestamps
+        """
         selection = np.zeros_like(timestamps)
         window = int(self.diff_threshold*sfreq)
         for time in range(0, int(timestamps.max()), window):
@@ -432,10 +456,17 @@ class CleanDetections(TransformerMixin, BaseEstimator):
                 # add timepoint with max subcorr value to selection
                 selection[np.where(mask)[0][subcorr_max_idx]] = 1
 
-        # Select n_spikes with max subcorr
-        not_selected = np.argsort(
-            subcorr[selection == 1])[::-1][self.n_cleaned_peaks:]
-        selection[not_selected] = 0
+        # Ensure that the interspike interval is less then window
+        if strict_threshold:
+            ind_adjacent_events = np.where(np.diff(timestamps) < window)[0]
+            selection[ind_adjacent_events] = 0
+
+        # Select `n_cleaned_peaks` with max subcorr
+        selection_ind = np.where(selection > 0)[0]
+        selected_subcorrs = subcorr[selection_ind]
+        final_selection_ind = np.argsort(selected_subcorrs)[::-1]
+        not_selected = final_selection_ind[self.n_cleaned_peaks:]
+        selection[selection_ind[not_selected]] = 0
         return selection
 
 
@@ -838,6 +869,8 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
             if atom in unique_atoms:
                 atom_mask = detection_mask & (atoms == atom)
                 timestamps = np.where(atom_mask)[0]
+                # add the first sample to the timestamps
+                timestamps += mag_data.first_samp
                 # make epochs only with best events for this atom
                 epochs = create_epochs(
                    mag_data, timestamps, tmin=-0.25, tmax=0.25)
