@@ -150,7 +150,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
             one value (o or 1) for each ICA component. 1 means that component
             selected.
         """
-        selected = np.ones_like(kurtosis)
+        selected = np.zeros_like(kurtosis)
         selected[:self.n_by_var] = 1  # first n components by variance
         selected[kurtosis < self.kurtosis_min] = 0
         selected[kurtosis > self.kurtosis_max] = 0
