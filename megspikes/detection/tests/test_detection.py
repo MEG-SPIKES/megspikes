@@ -171,7 +171,8 @@ def test_ica_peaks_detection_cleaning():
         results = np.load(results_path)
         # 1000 instead of 300 because of the repetitions in the detections
         cleaning = CleanDetections(n_cleaned_peaks=1000)
-        selection = cleaning.clean_detections(times, subcorrs)
+        selection = cleaning.clean_detections(
+            times, subcorrs, strict_threshold=False)
         assert sum(selection) <= cleaning.n_cleaned_peaks
         selection_ind = np.where(selection > 0)[0]
         assert np.isin(results, times[selection_ind]).all()
