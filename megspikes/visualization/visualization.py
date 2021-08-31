@@ -383,6 +383,7 @@ class DetectionsViewer(param.Parameterized):
         detection_mask = (detections > 0) & (atoms == atom)
         spikes = np.where(detection_mask)[0]
         spikes = (spikes / self.data.sfreq) * sfreq
+        spikes += self.raw.first_samp
         epochs = create_epochs(self.raw, spikes, -0.25, 0.25,
                                sensors=self.sensors)
         n_samples_epoch = len(epochs.times)
