@@ -458,8 +458,12 @@ class CleanDetections(TransformerMixin, BaseEstimator):
 
         # Ensure that the interspike interval is less then window
         if strict_threshold:
-            ind_adjacent_events = np.where(np.diff(timestamps) < window)[0]
-            selection[ind_adjacent_events] = 0
+            selection_mask = selection > 0
+            ind_adjacent_events = np.where(
+                np.diff(timestamps[selection_mask]) < window)[0]
+            clean_mask = np.isin(
+                timestamps, timestamps[selection_mask][ind_adjacent_events])
+            selection[clean_mask] = 0
 
         # Select `n_cleaned_peaks` with max subcorr
         selection_ind = np.where(selection > 0)[0]
