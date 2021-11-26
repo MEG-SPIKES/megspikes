@@ -153,3 +153,6 @@ dmypy.json
 
 # test data
 ica_sources.npy
+
+# PyCharm
+/.idea
