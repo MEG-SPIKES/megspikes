@@ -16,6 +16,15 @@ def run_simulation(test_sample_path):
     return sim
 
 
+@pytest.fixture(scope="module", name='mne_example_dataset')
+def run_mne_example_simulation(test_sample_path):
+    path = test_sample_path / 'mne_example_dataset'
+    path.mkdir(exist_ok=True, parents=True)
+    sim = Simulation(path, n_events=[10, 0, 0, 0])
+    sim.simulate_dataset_mne_example()
+    return sim
+
+
 @pytest.fixture(scope="module", name='simulation_epochs_grad')
 def simulation_epochs_grad(simulation):
     raw = simulation.raw_simulation.copy()

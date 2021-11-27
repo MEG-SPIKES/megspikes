@@ -1,6 +1,7 @@
 import os.path as op
 from pathlib import Path
 
+import numpy as np
 import pytest
 from megspikes.pipeline import (aspire_alphacsc_pipeline,
                                 iz_prediction_pipeline,
@@ -43,6 +44,18 @@ def test_iz_prediction_pipeline(simulation):
     pipe = iz_prediction_pipeline(simulation.case_manager, params)
     atoms_lib = {'spikes': simulation.detections}
     raw = simulation.raw_simulation.copy()
+    _ = pipe.fit_transform((atoms_lib, raw))
+
+
+def test_iz_prediction_pipeline_mne_dataset(mne_example_dataset):
+    """Test with the real data file"""
+    params = {
+        'PrepareClustersDataset': {'detection_sfreq': 1000.}
+    }
+    case = mne_example_dataset.case_manager
+    pipe = iz_prediction_pipeline(case, params)
+    atoms_lib = {'spikes': np.int32(np.arange(1, 10) * 1000)}
+    raw = mne_example_dataset.raw_simulation.copy()
     _ = pipe.fit_transform((atoms_lib, raw))
 
 

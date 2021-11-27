@@ -165,6 +165,12 @@ class Simulation:
             self.fresection, self.case_manager.fwd['ico5'])
         self.raw = simulation
 
+    def simulate_dataset_mne_example(self):
+        info, fwd, raw = self._read_mne_sample_dataset()
+        self._simulate_data_structure(raw)
+        self._simulate_case()
+        self.raw = raw
+
     def _read_mne_sample_dataset(self) -> Tuple[mne.Info, mne.Forward,
                                                 mne.io.Raw]:
         """Load sample MNE dataset.
