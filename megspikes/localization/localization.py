@@ -523,6 +523,9 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
         clusters_properties = np.zeros((len(all_clusters), 3))
         n_times = len(X[0].time_evoked.values)
 
+        # Select only the relevant channels
+        X = (self.select_only_meg_channels(X[0]), X[1])
+
         evokeds = []
         for cluster in all_clusters:
             evoked = self.average_cluster(
@@ -585,6 +588,16 @@ class ClustersLocalization(Localization, BaseEstimator, TransformerMixin):
             tmax=self.epochs_window[1])
         # Create Evoked
         return epochs.average()
+
+    def select_only_meg_channels(self, ds: xr.Dataset):
+        """Select only the relevant channels in the dataset
+           FIXME Temporary solution to avoid wrong dimensions error
+        """
+        sensors = ds.sensors.values.tolist()
+        channels = []
+        for sens in sensors:
+            channels += ds.channel_names.attrs[sens].tolist()
+        return ds.loc[dict(sensors=sensors, channel=channels)]
 
 
 class ForwardToMNI(Localization, BaseEstimator, TransformerMixin):
