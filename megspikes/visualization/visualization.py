@@ -524,6 +524,8 @@ class ClusterSlopeViewer(param.Parameterized):
 
     @param.depends('save_ds', watch=True)
     def _save_dataset(self):
+        self._rerun_iz_prediction()
+        self._update_dataset()
         self.data.ds.to_netcdf(self.fname_save_ds, mode='w', format="NETCDF4",
                                engine="netcdf4")
         logging.warning('DS saved')
