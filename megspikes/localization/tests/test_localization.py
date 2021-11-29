@@ -8,7 +8,7 @@ from megspikes.database.database import select_sensors
 from megspikes.localization.localization import (
     AlphaCSCComponentsLocalization, ClustersLocalization, ForwardToMNI,
     ICAComponentsLocalization, Localization, PeakLocalization,
-    PredictIZClusters)
+    PredictIZClusters, ManualEventsLocalization)
 from megspikes.utils import PrepareData
 from mne.beamformer import rap_music
 
@@ -125,3 +125,12 @@ def test_clusters_localization(clusters_random_dataset, simulation):
     results = localizer.fit_transform((dataset, simulation.raw_simulation))
     izpredictor = PredictIZClusters(case=case)
     results = izpredictor.fit_transform(results)
+
+
+@pytest.mark.happy
+def test_manual_events_localization(simulation):
+    localizer = ManualEventsLocalization(simulation.case_manager)
+    spikes = np.int32(simulation.spikes * 1000)
+    manual_stc = localizer.fit_transform((spikes,
+                                          simulation.raw_simulation))
+    assert sum(manual_stc > 0) != 0
