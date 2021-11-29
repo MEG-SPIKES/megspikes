@@ -775,13 +775,44 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
 
 
 class ManualEventsLocalization(Localization, BaseEstimator, TransformerMixin):
+    """Predict irritative zone using localizations of manually detected events.
+
+    Parameters
+    ----------
+    case : CaseManager
+        [description]
+    inv_method : str, optional
+        by default 'MNE'
+    epochs_window : Tuple[float], optional
+        [description]
+    spacing : str, optional
+        the number of sources in the forward model, by default 'ico5'
+    sensors : Union[str, bool], optional
+        [description], by default 'grad'
+    smoothing_steps : int, optional
+        amount of smoothing for the individual spike binary map,
+        by default 10
+    smoothing_steps_final : int, optional
+        amount of smoothing for the final prediction, by default 10
+
+    References
+    ----------
+    .. [1] Tanaka, N., Papadelis, C., Tamilia, E., Madsen, J. R., Pearl, P.
+        L., & Stufflebeam, S. M. (2018). Magnetoencephalographic Mapping of
+        Epileptic Spike Population Using Distributed Source Analysis:
+        Comparison With Intracranial Electroencephalographic Spikes.
+        Journal of Clinical Neurophysiology, 35(4), 339–345.
+        https://doi.org/10.1097/WNP.0000000000000476
+    """
+
     def __init__(self, case: CaseManager,
                  inv_method: str = 'MNE',
                  epochs_window: Tuple[float] = (-0.5, 0.5),
                  spacing='ico5',
                  sensors='grad',
-                 smoothing_steps=3,
+                 smoothing_steps=10,
                  smoothing_steps_final=10):
+
         self.setup_fwd(case, sensors=sensors, spacing=spacing)
         self.inverse_operator = make_inverse_operator(
             self.info, self.fwd, self.cov, depth=None, fixed=False)
