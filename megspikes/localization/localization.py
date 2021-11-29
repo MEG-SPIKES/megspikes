@@ -795,7 +795,10 @@ class ManualEventsLocalization(Localization, BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X) -> np.ndarray:
-        epochs = create_epochs(X[1], X[0], tmin=-0.25, tmax=0.25)
+        # add first sample
+        times = X[0] + X[1].first_samp
+
+        epochs = create_epochs(X[1], times, tmin=-0.25, tmax=0.25)
         stc_manual = self.epochs_to_stc(epochs)
         return stc_manual
 
