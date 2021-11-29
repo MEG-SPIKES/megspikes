@@ -772,3 +772,61 @@ class PredictIZClusters(Localization, BaseEstimator, TransformerMixin):
         return self.binarize_stc(
             iz_prediciton, self.fwd, self.smoothing_steps_final,
             self.amplitude_threshold, self.min_sources)
+
+
+class ManualEventsLocalization(Localization, BaseEstimator, TransformerMixin):
+    def __init__(self, case: CaseManager,
+                 inv_method: str = 'MNE',
+                 epochs_window: Tuple[float] = (-0.5, 0.5),
+                 spacing='ico5',
+                 sensors='grad',
+                 smoothing_steps=3,
+                 smoothing_steps_final=10):
+        self.setup_fwd(case, sensors=sensors, spacing=spacing)
+        self.inverse_operator = make_inverse_operator(
+            self.info, self.fwd, self.cov, depth=None, fixed=False)
+        self.inv_method = inv_method
+        self.epochs_window = epochs_window
+        self.spacing = spacing
+        self.smoothing_steps = smoothing_steps
+        self.smoothing_steps_final = smoothing_steps_final
+
+    def fit(self, X: Tuple[np.ndarray, mne.io.Raw], y=None):
+        return self
+
+    def transform(self, X) -> np.ndarray:
+        epochs = create_epochs(X[1], X[0], tmin=-0.25, tmax=0.25)
+        stc_manual = self.epochs_to_stc(epochs)
+        return stc_manual
+
+    def epochs_to_stc(self, epochs):
+        """Convert epochs to source estimate
+        Parameters
+        ----------
+        epochs : mne.Epochs
+            manual spikes epochs
+        Returns
+        -------
+        stc : mne.SourceEstimate
+            final source estimate for all epochs
+        """
+        n_epochs, n_channels, n_times = epochs.get_data().shape
+        snr = 3.0
+        lambda2 = 1.0 / snr ** 2
+        stcs = mne.minimum_norm.apply_inverse_epochs(
+            epochs, self.inverse_operator, lambda2,
+            self.inv_method, pick_ori=None)
+
+        results = []
+        for stc in stcs:
+            stc_spike_bin = self.binarize_stc(
+                stc.data[:, n_times//2].squeeze(),
+                self.fwd, smoothing_steps=self.smoothing_steps)
+            results.append(stc_spike_bin)
+
+        # Binarize stc again
+        iz_prediction = np.stack(results, axis=-1).sum(axis=-1)
+        iz_prediction[iz_prediction < n_epochs/2] = 0
+        iz_prediction[iz_prediction >= n_epochs/2] = 1
+        return self.binarize_stc(
+            iz_prediction, self.fwd, smoothing_steps=self.smoothing_steps_final)
