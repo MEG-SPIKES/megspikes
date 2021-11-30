@@ -19,7 +19,7 @@ def fixture_data():
 @pytest.mark.happy
 @pytest.mark.slow
 @pytest.mark.parametrize("n_runs,runs,n_components", [
-    (4, [0, 1, 2, 3], 20), (1, [0], 20), (2, [0, 1], 5)])
+    (1, [0], 20), (2, [0, 1], 5)])
 def test_full_case_analysis_pipeline(simulation_large, n_runs, runs,
                                      n_components):
     params = {
