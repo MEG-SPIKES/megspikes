@@ -90,7 +90,7 @@ class CaseManager():
         root = self.case_meg
         basic_folders = {}
         folders = [
-            "MEG_data", "PSD",  "MRI", "MANUAL", "forward_model"]
+            "MEG_data", "PSD",  "MRI", "MANUAL", "forward_model", "REPORTS"]
         for folder in folders:
             folder_ = root / folder
             if not folder_.is_dir():
