@@ -96,7 +96,7 @@ class Database():
                                   'AlphaCSC detection'),
                 'ica_alphacsc_aligned': ('Alignment of the ICA components '
                                          'that was done using AlphaCSC')
-                },
+            },
             name='detection_property_coord')
 
         atoms_library_properties = xr.DataArray(
@@ -117,7 +117,7 @@ class Database():
                 'gof': ('The measurement of the dipole fitting quality.'
                         'Larger values correspond to the better solution'),
                 'gof_units': 'percentage between [0, 100]'
-                },
+            },
             name='ica_component_properties_coords')
 
         # alphacsc atoms
@@ -137,7 +137,7 @@ class Database():
                 'gof_units': 'percentage between [0, 100]',
                 'goodness': 'comprehensive assessment atoms quality',
                 'selected': 'Atoms selected for clusters library'
-                },
+            },
             name='alphacsc_atoms_properties_coords')
 
         # ---- Prepare dataarrays ---- #
@@ -296,7 +296,7 @@ class Database():
             alphacsc_u_hat,
             alphacsc_atoms_properties,
             alphacsc_atoms_library_properties
-            ])
+        ])
         return ds
 
     def make_clusters_dataset(self, times: np.ndarray, n_clusters: int,
@@ -401,7 +401,7 @@ class Database():
             coords={
                 "time": time,
                 "detection_property": detection_property_coords
-                },
+            },
             attrs={
                 'sfreq': sfreq,
             },
@@ -413,7 +413,7 @@ class Database():
             coords={
                 "cluster": cluster,
                 "cluster_property": cluster_property_coords
-                },
+            },
             name="cluster_properties")
 
         mne_localization = xr.DataArray(
@@ -425,7 +425,7 @@ class Database():
                 "cluster": cluster,
                 "source": source,
                 "time_evoked": time_evoked
-                },
+            },
             name="mne_localization")
 
         evoked = xr.DataArray(
@@ -435,7 +435,7 @@ class Database():
                 "cluster": cluster,
                 "channel": channels,
                 "time_evoked": time_evoked
-                },
+            },
             name="evoked")
 
         iz_prediction = xr.DataArray(
@@ -445,7 +445,7 @@ class Database():
             coords={
                 "source": source,
                 "iz_prediction_timepoint": iz_prediction_timepoints_coords
-                },
+            },
             name="iz_prediction")
 
         fwd_mni_coordinates = xr.DataArray(
@@ -455,7 +455,7 @@ class Database():
             coords={
                 "source": source,
                 "mni_coordinate": ['x', 'y', 'z']
-                },
+            },
             attrs={
                 "mni_coordinate_units": "mm"
             },
@@ -471,7 +471,7 @@ class Database():
             evoked,
             iz_prediction,
             fwd_mni_coordinates
-            ])
+        ])
         return ds
 
     def select_sensors(self, ds: xr.Dataset, sensors: str,
@@ -482,6 +482,7 @@ class Database():
 
 class PrepareClustersDataset(BaseEstimator, TransformerMixin):
     """Prepare xr.Dataset for the cluster's localization procedure."""
+
     def __init__(self, fif_file, fwd,
                  detection_sfreq: float = 200.,
                  evoked_length: float = 1.,
@@ -576,6 +577,7 @@ class PrepareClustersDataset(BaseEstimator, TransformerMixin):
 
 class PrepareAspireAlphacscDataset(BaseEstimator, TransformerMixin):
     """Prepare xr.Dataset for the ASPIRE AlphaCSC detection pipeline."""
+
     def __init__(self,
                  fif_file: Union[str, Path],
                  fwd: mne.Forward,
@@ -634,10 +636,12 @@ class SaveDataset(TransformerMixin, BaseEstimator):
     """
     def __init__(self, dataset: Union[str, Path],
                  sensors: Union[str, None] = None,
-                 run: Union[int, None] = None) -> None:
+                 run: Union[int, None] = None,
+                 rewrite_previous_results=False) -> None:
         self.dataset = dataset
         self.sensors = sensors
         self.run = run
+        self.rewrite_previous_results = rewrite_previous_results
 
     def fit(self, X: Tuple[xr.Dataset, Any], y=None):
         return self
@@ -652,12 +656,21 @@ class SaveDataset(TransformerMixin, BaseEstimator):
             raise RuntimeError(f'Sensors {type(self.sensors)} or run '
                                f'{type(self.run)} have a wrong type.')
         else:
-            if self.dataset.is_file():
-                X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
-                               engine="netcdf4")
+            if self.dataset.is_file() & (not self.rewrite_previous_results):
+                raise RuntimeError(
+                    'Results dataset exists and you try to overwrite it')
             else:
-                X[0].to_netcdf(self.dataset, mode='w', format="NETCDF4",
-                               engine="netcdf4")
+                if self.rewrite_previous_results | (not self.dataset.is_file()):
+                    X[0].to_netcdf(self.dataset, mode='w', format="NETCDF4",
+                                   engine="netcdf4")
+                else:
+                    try:
+                        X[0].to_netcdf(self.dataset, mode='a', format="NETCDF4",
+                                       engine="netcdf4")
+                    except:
+                        raise RuntimeError(
+                            'Results dataset exists and you try to add'
+                            'inconsistent data in it.')
         return X
 
     def update_selected_fields(self, from_ds: xr.Dataset, to_ds: xr.Dataset):
@@ -692,6 +705,7 @@ class SaveDataset(TransformerMixin, BaseEstimator):
 
 class ReadDetectionResults(TransformerMixin, BaseEstimator):
     """Read detection pipeline results to strart cluster pipeline."""
+
     def __init__(self) -> None:
         pass
 

@@ -16,6 +16,14 @@ def run_simulation(test_sample_path):
     return sim
 
 
+@pytest.fixture(scope="module", name='simulation_large')
+def run_large_simulation(test_sample_path):
+    test_sample_path.mkdir(exist_ok=True, parents=True)
+    sim = Simulation(test_sample_path, n_events=[5, 5, 5, 5])
+    sim.simulate_dataset(noise_scaler=2)
+    return sim
+
+
 @pytest.fixture(scope="module", name='mne_example_dataset')
 def run_mne_example_simulation(test_sample_path):
     path = test_sample_path / 'mne_example_dataset'
@@ -93,11 +101,23 @@ def prepare_aspire_alphacsc_random_dataset(simulation):
                 selection_pipe_sens].shape
             ds['detection_properties'].loc[
                 selection_pipe_sens] = np.random.sample(shape)
+            det = np.random.choice(a=[0, 1], size=shape[-1], p=[0.9, 0.1])
+            ds.detection_properties.loc[
+                selection_pipe_sens].loc[dict(
+                detection_property='alphacsc_detection')] = det
+            ds.detection_properties.loc[
+                selection_pipe_sens].loc[dict(
+                detection_property='alphacsc_atom')] = np.random.randint(
+                0, n_atoms, shape[-1])
 
             shape = ds['alphacsc_atoms_properties'].loc[
                 selection_pipe_sens].shape
             ds['alphacsc_atoms_properties'].loc[
                 selection_pipe_sens] = np.random.sample(shape)
+            ds['alphacsc_atoms_properties'].loc[
+                selection_pipe_sens].loc[dict(
+                alphacsc_atom_property='selected')] = np.random.choice(
+                a=[0, 1], size=n_atoms, p=[0.5, 0.5])
 
             shape = ds['alphacsc_z_hat'].loc[selection_pipe_sens].shape
             ds['alphacsc_z_hat'].loc[

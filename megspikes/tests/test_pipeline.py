@@ -7,6 +7,8 @@ from megspikes.pipeline import (aspire_alphacsc_pipeline,
                                 iz_prediction_pipeline,
                                 read_detection_iz_prediction_pipeline,
                                 update_default_params)
+from megspikes.visualization.report import report_detection, \
+    report_atoms_library
 
 
 @pytest.fixture(scope="module", name='test_sample_path')
@@ -32,8 +34,17 @@ def test_aspire_alphacsc_pipeline(simulation):
             'z_hat_threshold_min': 0.1}
     }
     pipe = aspire_alphacsc_pipeline(
-        simulation.case_manager, update_params=params)
-    _ = pipe.fit_transform(None)
+        simulation.case_manager, update_params=params,
+        rewrite_previous_results=True)
+    dataset, raw = pipe.fit_transform(None)
+    fname = f'test_report_detections.pdf'
+    report_detections_path = simulation.case_manager.basic_folders[
+                                 'REPORTS'] / fname
+    fname = f'test_report_atoms_library.pdf'
+    report_library_path = simulation.case_manager.basic_folders[
+                              'REPORTS'] / fname
+    report_detection(report_detections_path, dataset, raw)
+    report_atoms_library(report_library_path, dataset, raw)
 
 
 @pytest.mark.happy
@@ -41,7 +52,8 @@ def test_iz_prediction_pipeline(simulation):
     params = {
         'PrepareClustersDataset': {'detection_sfreq': 1000.}
     }
-    pipe = iz_prediction_pipeline(simulation.case_manager, params)
+    pipe = iz_prediction_pipeline(
+        simulation.case_manager, params, rewrite_previous_results=True)
     atoms_lib = {'spikes': simulation.detections}
     raw = simulation.raw_simulation.copy()
     _ = pipe.fit_transform((atoms_lib, raw))
@@ -53,7 +65,7 @@ def test_iz_prediction_pipeline_mne_dataset(mne_example_dataset):
         'PrepareClustersDataset': {'detection_sfreq': 1000.}
     }
     case = mne_example_dataset.case_manager
-    pipe = iz_prediction_pipeline(case, params)
+    pipe = iz_prediction_pipeline(case, params, rewrite_previous_results=True)
     atoms_lib = {'spikes': np.int32(np.arange(1, 10) * 1000)}
     raw = mne_example_dataset.raw_simulation.copy()
     _ = pipe.fit_transform((atoms_lib, raw))
@@ -66,8 +78,8 @@ def test_read_results_iz_prediction_pipeline(simulation,
     params = {
         'PrepareClustersDataset': {'detection_sfreq': 200.}
     }
-    pipe = read_detection_iz_prediction_pipeline(simulation.case_manager,
-                                                 params)
+    pipe = read_detection_iz_prediction_pipeline(
+        simulation.case_manager, params, rewrite_previous_results=True)
     _ = pipe.fit_transform((aspire_alphacsc_random_dataset,
                             simulation.raw_simulation.copy()))
 

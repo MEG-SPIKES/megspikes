@@ -23,7 +23,8 @@ clusters_params = os.path.join(
     os.path.dirname(__file__), "clusters_default_params.yml")
 
 
-def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
+def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict,
+                             rewrite_previous_results: bool = False):
     """Create ASPIRE AlphaCSC pipeline object.
 
     Parameters
@@ -32,12 +33,19 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
         This object includes head model and the link to the MEG recording
     update_params : dict
         Parameters to update
+    rewrite_previous_results : bool
+        Rewrite previous results
 
     Returns
     -------
     sklearn.pipeline.Pipeline
         [description]
     """
+    if (not rewrite_previous_results) & case.dataset.is_file():
+        raise RuntimeError(
+            'Results dataset exists and you try to overwrite it. If you want to'
+            'do that, set rewrite_previous_results=True')
+
     with open(aspire_alphacsc_params, 'rt') as f:
         default_params = yaml.safe_load(f.read())
     params = update_default_params(default_params, update_params)
@@ -106,7 +114,9 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
          PrepareAspireAlphacscDataset(
              fif_file=case.fif_file, fwd=case.fwd['ico5'],
              **params['PrepareAspireAlphacscDataset'])),
-        ('save_empty_dataset', SaveDataset(dataset=case.dataset)),
+        ('save_empty_dataset', SaveDataset(
+            dataset=case.dataset,
+            rewrite_previous_results=rewrite_previous_results)),
         ('finish_preparation', ToFinish()),
         ('extract_all_atoms',  FeatureUnion(pipe_sensors)),  # no output
         ('prepare_data',
@@ -116,11 +126,20 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict):
          LoadDataset(dataset=case.dataset, sensors=None, run=None)),
         ('merge_atoms', AspireAlphacscRunsMerging(
             **params['AspireAlphacscRunsMerging'])),
-        ('save_dataset', SaveDataset(dataset=case.dataset))])
+        ('save_dataset', SaveDataset(
+            dataset=case.dataset,
+            rewrite_previous_results=rewrite_previous_results))])
     return pipe
 
 
-def iz_prediction_pipeline(case: CaseManager, update_params: dict):
+def iz_prediction_pipeline(case: CaseManager, update_params: dict,
+                           rewrite_previous_results: bool = False):
+
+    if (not rewrite_previous_results) & case.cluster_dataset.is_file():
+        raise RuntimeError(
+            'Results dataset exists and you try to overwrite it. If you want to'
+            'do that, set rewrite_previous_results=True')
+
     with open(clusters_params, 'rt') as f:
         default_params = yaml.safe_load(f.read())
     params = update_default_params(default_params, update_params)
@@ -133,17 +152,26 @@ def iz_prediction_pipeline(case: CaseManager, update_params: dict):
         ('convert_forward_to_mni', ForwardToMNI(case=case)),
         ('predict_IZ',
          PredictIZClusters(case=case, **params['PredictIZClusters'])),
-        ('save_dataset', SaveDataset(dataset=case.cluster_dataset))
+        ('save_dataset', SaveDataset(
+            dataset=case.cluster_dataset,
+            rewrite_previous_results=rewrite_previous_results))
         ])
     return pipe
 
 
-def read_detection_iz_prediction_pipeline(case: CaseManager,
-                                          clusters_params: dict):
+def read_detection_iz_prediction_pipeline(
+        case: CaseManager, clusters_params: dict,
+        rewrite_previous_results: bool = False):
+    if (not rewrite_previous_results) & case.cluster_dataset.is_file():
+        raise RuntimeError(
+            'Results dataset exists and you try to overwrite it. If you want to'
+            'do that, set rewrite_previous_results=True')
+
     pipe = Pipeline([
         ('read_detections_results', ReadDetectionResults()),
         ('iz_prediction_pipeline',
-         iz_prediction_pipeline(case, clusters_params))])
+         iz_prediction_pipeline(
+             case, clusters_params, rewrite_previous_results))])
     return pipe
 
 
