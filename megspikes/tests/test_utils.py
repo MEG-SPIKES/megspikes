@@ -5,7 +5,8 @@ import mne
 import numpy as np
 import pytest
 from megspikes.utils import (PrepareData, labels_to_mni, prepare_data,
-                             spike_snr_all_channels, spike_snr_max_channel)
+                             spike_snr_all_channels, spike_snr_max_channel,
+                             brainstorm_events_export, read_dip)
 
 mne.set_log_level("ERROR")
 
@@ -87,3 +88,18 @@ def test_labels_to_mni(simulation):
         simulation.labels, simulation.case_manager.fwd['ico5'],
         simulation.mne_subject, simulation.subjects_dir)
     assert sum(data != 0) == mni_resection.shape[0]
+
+
+@pytest.mark.happy
+def test_brainstorm_export(test_sample_path):
+    save_path = test_sample_path / 'bst_events.mat'
+    times = {f'{i}_marker': np.random.random(100) for i in range(4)}
+    brainstorm_events_export(save_path, times)
+
+
+@pytest.mark.happy
+def test_reading_dip_files(test_sample_path):
+    root = Path(op.dirname(__file__))
+    dip_path = root / 'data' / 'test_dipoles.dip'
+    dips = read_dip(dip_path)
+    assert dips[0] == 555555
