@@ -1,5 +1,6 @@
+import logging
 from pathlib import Path
-from typing import List, Tuple, Union, Any
+from typing import List, Tuple, Union, Any, Dict
 
 import mne
 from mne.source_space import _check_mri
@@ -18,7 +19,12 @@ from mne.transforms import apply_trans, invert_transform
 from scipy import signal
 from scipy.ndimage.filters import gaussian_filter
 from scipy.spatial import Delaunay
+import scipy.io as sio
 from sklearn.base import BaseEstimator, TransformerMixin
+
+from tempfile import mkstemp
+from shutil import move, copymode
+from os import fdopen, remove
 
 mne.set_log_level("ERROR")
 
@@ -122,7 +128,7 @@ class PrepareData(BaseEstimator, TransformerMixin):
 
 def create_epochs(meg_data: mne.io.Raw, detections: np.ndarray,
                   tmin: float = -0.5, tmax: float = 0.5,
-                  sensors: Union[str, bool] = True,):
+                  sensors: Union[str, bool] = True, ):
     '''
     Here we create epochs for events
 
@@ -204,7 +210,7 @@ def onset_slope_timepoints(label_ts: np.ndarray,
     peak_width = widths_full[0][peak_ind]
     peak = peaks[peak_ind]
     # if left base is too far use 100 samples
-    slope_left_base = max(peak - peak_width / 2, peak-100)
+    slope_left_base = max(peak - peak_width / 2, peak - 100)
     slope_times = np.linspace(max(2, slope_left_base), peak, n_points)
     return slope_times
 
@@ -239,14 +245,14 @@ def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
     del vox_mri_t
     data = np.zeros(_get_img_fdata(nim).shape)
 
-    lh_coordinates = src[0]['rr'][stc.lh_vertno]*1000  # MRI coordinates
+    lh_coordinates = src[0]['rr'][stc.lh_vertno] * 1000  # MRI coordinates
     lh_coordinates = apply_trans(mri_vox_t, lh_coordinates)
     lh_data = stc.lh_data
     lh_coordinates = lh_coordinates[lh_data[:, 0] > 0, :]
     lh_coordinates = np.int32(lh_coordinates)
     data[lh_coordinates[:, 0], lh_coordinates[:, 1], lh_coordinates[:, 2]] = 1
 
-    rh_coordinates = src[1]['rr'][stc.rh_vertno]*1000  # MRI coordinates
+    rh_coordinates = src[1]['rr'][stc.rh_vertno] * 1000  # MRI coordinates
     rh_coordinates = apply_trans(mri_vox_t, rh_coordinates)
     rh_data = stc.rh_data
     rh_coordinates = rh_coordinates[rh_data[:, 0] > 0, :]
@@ -271,28 +277,29 @@ def stc_to_nifti(stc: mne.SourceEstimate, fwd: mne.Forward,
 
 def spike_snr_all_channels(data: np.ndarray, peak):
     # data: trials, channels, times
-    mean_peak = (data[:, :, peak-20:peak+20]**2).mean(axis=-1).mean(0)
+    mean_peak = (data[:, :, peak - 20:peak + 20] ** 2).mean(axis=-1).mean(0)
     var_noise = data[:, :, :].var(axis=-1).mean(0)
     # snr = (mean_peak / var_noise).mean()
-    snr = 10*np.log10((mean_peak / var_noise).mean())
+    snr = 10 * np.log10((mean_peak / var_noise).mean())
     return snr
 
 
 def spike_snr_max_channel(data: np.ndarray, peak, n_max_channels=20):
     # data: trials, channels, times
     max_ch = np.argsort(
-        (data[:, :, peak-20:peak+20]**2).mean(
+        (data[:, :, peak - 20:peak + 20] ** 2).mean(
             axis=-1).mean(axis=0))[::-1][:n_max_channels]
-    mean_peak = (data[:, max_ch, peak-20:peak+20]**2).mean(axis=-1).mean(0)
+    mean_peak = (data[:, max_ch, peak - 20:peak + 20] ** 2).mean(axis=-1).mean(
+        0)
     var_noise = data[:, max_ch, :].var(axis=-1).mean(0)
     # snr = (mean_peak / var_noise).mean()
-    snr = 10*np.log10((mean_peak / var_noise).mean())
+    snr = 10 * np.log10((mean_peak / var_noise).mean())
     return snr, max_ch
 
 
 def labels_to_mni(labels: List[mne.Label], fwd: mne.Forward,
                   subject: str, subjects_dir: str) -> Tuple[
-                      np.ndarray, np.ndarray, List[List[int]]]:
+    np.ndarray, np.ndarray, List[List[int]]]:
     """Convert labels to mni coordinates.
 
     Parameters
@@ -338,6 +345,7 @@ def labels_to_mni(labels: List[mne.Label], fwd: mne.Forward,
 
 class ToFinish(TransformerMixin, BaseEstimator):
     """Empty template to finish sklearn Pipeline."""
+
     def __init__(self) -> None:
         pass
 
@@ -347,3 +355,116 @@ class ToFinish(TransformerMixin, BaseEstimator):
     def transform(self, X):
         del X
         return []
+
+
+def brainstorm_events_export(save_path: Path,
+                             timestamps_dict: Dict[str, np.ndarray]):
+    """
+    Save all detections as Brainstorm events structure
+
+    Parameters
+    ----------
+    save_path : pathlib.PosixPath
+        path to save the file
+    timestamps_dict : dict(label: timestamps in seconds)
+        aligned to the first sample
+    """
+
+    def _bst_one_event(data: np.ndarray, marker_index: int, label: str,
+                       color: List[float], times: List[float]):
+        """
+        Fill one marker in Brainstorm event's structure
+
+        Parameters
+        ----------
+        data : np.array
+            DESCRIPTION.
+        marker_index : int
+            markes' index
+        label : str
+            the label of the marker
+        color : list, float
+            len = 3
+        times : list, float
+            timepoints in seconds aligned to the first sample
+
+        Returns
+        -------
+        arr
+
+        """
+        data[0][marker_index]['label'] = np.array([label], dtype='<U5')
+        data[0][marker_index]['color'] = np.array([color])
+        data[0][marker_index]['epochs'] = np.array([[1] * len(times)],
+                                                   dtype=np.uint8)
+        data[0][marker_index]['times'] = np.array([times])
+        data[0][marker_index]['reactTimes'] = np.array([], dtype=np.uint8)
+        data[0][marker_index]['select'] = np.array([[1]], dtype=np.uint8)
+        data[0][marker_index]['channels'] = np.array(
+            [[np.array([], dtype=np.object),
+              np.array([], dtype=np.object)]],
+            dtype=np.object)
+        data[0][marker_index]['notes'] = np.array(
+            [[np.array([], dtype=np.uint8),
+              np.array([], dtype=np.uint8)]],
+            dtype=np.object)
+        return data
+
+    labels = [key for key in timestamps_dict.keys()]
+    dt = [('label', 'O'), ('color', 'O'), ('epochs', 'O'),
+          ('times', 'O'), ('reactTimes', 'O'), ('select', 'O'),
+          ('channels', 'O'), ('notes', 'O')]
+    n_markers = len(labels)
+    arr = np.zeros((1, n_markers), dtype=dt)
+    for i in range(n_markers):
+        color = np.random.rand(3, ).tolist()
+        times = timestamps_dict[labels[i]]
+        times = np.unique(times)
+        arr = _bst_one_event(
+            arr, i, labels[i], color, times.tolist())
+    sio.savemat(save_path, {'events': arr})
+
+
+def read_dip(dip_path: Path, sfreq: int = 1000) -> np.ndarray:
+    """
+    Fix header and read dipoles
+    Returns
+    -------
+    dipoles : np.ndarray
+        timestamps in milliseconds
+
+    See Also https://mne.tools/stable/generated/mne.read_dipole.html
+    """
+
+    def _replace_txt_in_dip(file_path, pattern, subst):
+        """
+        Write the content to a new file and replaces the old file with the new
+        file.
+        """
+
+        # Create temp file
+        fh, abs_path = mkstemp()
+        with fdopen(fh, 'w') as new_file:
+            with open(file_path) as old_file:
+                for line in old_file:
+                    if line.find(subst) > 0:
+                        new_file.write(line)
+                    else:
+                        new_file.write(line.replace(pattern, subst))
+        # Copy the file permissions from the old file to the new file
+        copymode(file_path, abs_path)
+        # Remove original file
+        remove(file_path)
+        # Move new file
+        move(abs_path, file_path)
+
+    # Add '/ms' to begin header
+    _replace_txt_in_dip(dip_path, 'begin', 'begin/ms')
+
+    # Read dipoles
+    logging.info(f'Reading manual detections from {str(dip_path)}')
+    dipoles = sorted(mne.read_dipole(str(dip_path), verbose='debug').times)
+    dipoles = np.array(dipoles) * sfreq
+    dipoles = np.sort(np.unique(np.rint(dipoles)))
+    logging.debug(f'Dipole times in milliseconds: {dipoles}')
+    return dipoles

@@ -1,0 +1,5 @@
+## CoordinateSystem "Head"
+# begin/ms end(ms)  X (mm)  Y (mm)  Z (mm)  Q(nAm) Qx(nAm) Qy(nAm) Qz(nAm)  g(%)
+  555555.0  555555.0    -22.8   -33.3    55.7  142.25  -68.55   59.08   58.87  74.3
+  666666.5  666666.5    -26.0   -33.1    24.2  642.98 -240.16  135.93   42.95  47.6
+## Name "XFit dipoles" Style "dipoles"
