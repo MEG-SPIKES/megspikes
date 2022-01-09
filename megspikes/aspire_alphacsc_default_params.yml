@@ -13,7 +13,7 @@ PrepareData: # preprocessing of the data before running the pipeline
   resample: 200. # Hz downsampling frequency
   # data_file: CaseManager.fif_file
   # sensors: grad
-  # alpha_notch: 12.
+  alpha_notch: null
 
 PrepareAspireAlphacscDataset: # prepare full resulting dataset structure
   atoms_width: 0.5 # width of the AlphaCSC atom in seconds

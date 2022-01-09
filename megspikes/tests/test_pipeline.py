@@ -27,6 +27,7 @@ def test_aspire_alphacsc_pipeline(simulation):
         'n_runs': 2,
         'runs': [0, 1],
         'n_atoms': 2,  # FIXME: one atom cause bugs
+        'PrepareData': {'alpha_notch': 10},
         'PeakDetection': {'width': 2},
         'CleanDetections': {'n_cleaned_peaks': 50},
         'SelectAlphacscEvents': {

@@ -224,6 +224,11 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
     spikes = np.where(detection_mask)[0]
     spikes = (spikes / ds.time.attrs['sfreq']) * sfreq
     spikes += raw.first_samp
+
+    # TODO: check if spikes array is empty
+    if len(spikes) == 0:
+        spikes = np.array([300, 700]) + raw.first_samp
+
     epochs = create_epochs(raw, spikes, -0.25, 0.25, sensors=sensors)
     n_samples_epoch = len(epochs.times)
     evoked = epochs.average()
