@@ -63,7 +63,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
     n_by_var : int, optional
         N first components selected by variance, by default 10
     gof : float, optional
-        components dipole fitting threshold, by default 80.
+        components' dipole fitting threshold, by default 80.
     gof_abs : float, optional
         absolute dipole fitting threshold, by default 95.
     kurtosis_min : float, optional
@@ -76,6 +76,21 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         all runs in the analysis, by default 4
     n_components_if_nothing_else : int, optional
         select components by gof if no components selected
+    manual_ica_components_selection : Tuple[Tuple[int]], by default None
+        manually selected ICA components for each run listed in the order of
+        runs starting from run 0. If manually selected ICA components are None,
+        ICA components chosen by the standard procedure are used. For example,
+        in the case of four runs, manual_ica_components_selection =
+        ((None), (0),(1)) means that ICA components 0 and 1 are manually
+        selected for runs 1 and 2 respectively, and default (chosen by the
+        algorithm) ICA components are assigned for runs 0 and 3.
+        NOTE: if components are manually selected only for the first run, the
+        second index of the tuple should be None or () to preserve
+        Tuple[Tuple[int]] structure. For instance,
+        manual_ica_components_selection=((0, 1, 2), None)
+        NOTE: A comma in the parenthesis is required if one ICA component is
+        manually selected. For example,
+        manual_ica_components_selection=((1, ), None)
 
     References
     ----------
@@ -96,7 +111,9 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                  kurtosis_max: float = 10.,
                  n_runs: int = 4,
                  n_components_if_nothing_else: int = 7,
-                 run: int = 0) -> None:
+                 run: int = 0,
+                 manual_ica_components_selection: Tuple[
+                     Tuple[int]] = None) -> None:
         self.n_by_var = n_by_var  # n components selected by variance
         self.gof = gof
         self.gof_abs = gof_abs
@@ -105,6 +122,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         self.n_components_if_nothing_else = n_components_if_nothing_else
         self.run = run
         self.n_runs = n_runs
+        self.manual_ica_components_selection = manual_ica_components_selection
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
@@ -163,7 +181,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         # select at least 7 components by gof if nothing else was selected
         if np.sum(selected) == 0:
             selected[np.argsort(gof)[::-1][
-                :self.n_components_if_nothing_else]] = 1
+                     :self.n_components_if_nothing_else]] = 1
 
         # if only one run or this is the first run
         if self.run != 0:
@@ -190,13 +208,23 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                 selected[np.argsort(gof)[::-1][:n_runs]] = 0
                 selected[np.argsort(gof)[::-1][n_runs]] = 1
 
+        # Manually update ICA components selection
+        if ((self.manual_ica_components_selection is not None) and  # if None
+                (len(self.manual_ica_components_selection) > 0) and  # if empty
+                (len(self.manual_ica_components_selection) > self.run)):
+            if ((self.manual_ica_components_selection[self.run] is not None) and
+                    (len(self.manual_ica_components_selection[self.run]) > 0)):
+                selected[:] = 0
+                selected[
+                    list(self.manual_ica_components_selection[self.run])] = 1
+
+        # Ensure that some components are selected
         if sum(selected) == 0:
             warnings.warn(
                 f"""Can't select ICA components, select first
                 {self.n_components_if_nothing_else} by GOF""")
             selected[np.argsort(gof)[::-1][
-                :self.n_components_if_nothing_else]] = 1
-
+                     :self.n_components_if_nothing_else]] = 1
         return selected
 
 
@@ -328,7 +356,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
                                   f'{self.prominence}) has {len(peaks)}'
                                   ' detections')
                     timestamps = np.append(timestamps, peaks)
-                    channels = np.append(channels, np.ones_like(peaks)*ind)
+                    channels = np.append(channels, np.ones_like(peaks) * ind)
 
             n_detections = len(timestamps)
 
@@ -374,7 +402,7 @@ class PeakDetection(TransformerMixin, BaseEstimator):
             rel_height=self.rel_height, width=self.width)
         # delete peaks at the beginig and at the end of the recording
         window = self.sfreq
-        peaks = peaks[(peaks > window) & (peaks < len(data)-window)]
+        peaks = peaks[(peaks > window) & (peaks < len(data) - window)]
         return peaks, props
 
 
@@ -446,7 +474,7 @@ class CleanDetections(TransformerMixin, BaseEstimator):
             binary array where 1 values indicate selected timestamps
         """
         selection = np.zeros_like(timestamps)
-        window = int(self.diff_threshold*sfreq)
+        window = int(self.diff_threshold * sfreq)
         for time in range(0, int(timestamps.max()), window):
             # timestamp in the diff window
             mask = (timestamps > time) & (timestamps <= (time + window))
@@ -511,22 +539,22 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
 
     def __init__(self, n_atoms: int = 3, atoms_width: float = 0.5,
                  sfreq: float = 200., greedy_cdl_kwarg: Dict = {
-                     "rank1": True,
-                     "uv_constraint": "separate",
-                     "window": True,
-                     "unbiased_z_hat": True,
-                     "D_init": "chunk",
-                     "lmbd_max": "scaled",
-                     "reg": 0.1,
-                     "n_iter": 100,
-                     "eps": 1e-4,
-                     "solver_z": "lgcd",
-                     "solver_z_kwargs": {"tol": 1e-3, "max_iter": 100000},
-                     "solver_d": "alternate_adaptive",
-                     "solver_d_kwargs": {"max_iter": 300},
-                     "sort_atoms": True,
-                     "verbose": 0,
-                     "random_state": 0},
+                "rank1": True,
+                "uv_constraint": "separate",
+                "window": True,
+                "unbiased_z_hat": True,
+                "D_init": "chunk",
+                "lmbd_max": "scaled",
+                "reg": 0.1,
+                "n_iter": 100,
+                "eps": 1e-4,
+                "solver_z": "lgcd",
+                "solver_z_kwargs": {"tol": 1e-3, "max_iter": 100000},
+                "solver_d": "alternate_adaptive",
+                "solver_d_kwargs": {"max_iter": 300},
+                "sort_atoms": True,
+                "verbose": 0,
+                "random_state": 0},
                  split_signal_kwarg: Dict = {
                      "n_splits": 5,
                      "apply_window": True},
@@ -605,7 +633,7 @@ class DecompositionAlphaCSC(TransformerMixin, BaseEstimator):
         assert len(timestamps) == tr, (
             "Number of cropped epochs is not equal number of the detected ICA"
             "peaks.")
-        data = epochs_data.transpose(1, 0, 2).reshape(ch, tr*times)
+        data = epochs_data.transpose(1, 0, 2).reshape(ch, tr * times)
         return mne.io.RawArray(data, epochs.info)
 
 
@@ -817,7 +845,7 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
 
         # estimate z-hat threshold
         z_mad = stats.median_abs_deviation(z_hat[z_hat > 0])
-        threshold = np.median(z_hat[z_hat > 0]) + z_mad*z_threshold
+        threshold = np.median(z_hat[z_hat > 0]) + z_mad * z_threshold
 
         # outputs
         alphacsc_detection = np.zeros_like(ica_peaks)
@@ -877,12 +905,12 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
                 timestamps += mag_data.first_samp
                 # make epochs only with best events for this atom
                 epochs = create_epochs(
-                   mag_data, timestamps, tmin=-0.25, tmax=0.25)
+                    mag_data, timestamps, tmin=-0.25, tmax=0.25)
 
                 # Estimate goodness of the atom
                 goodness[atom] = self._atom_goodness(
-                   epochs, gof[atom], len(timestamps), v_hat[atom],
-                   u_hat[atom])
+                    epochs, gof[atom], len(timestamps), v_hat[atom],
+                    u_hat[atom])
         return goodness
 
     def _atom_goodness(self, epochs: mne.Epochs, gof: float, n_detections: int,
@@ -932,9 +960,9 @@ class SelectAlphacscEvents(TransformerMixin, BaseEstimator):
         max_ch_waveforms = epochs.get_data()[:, max_ch, :]
         cross_corr = np.zeros(max_ch_waveforms.shape[0])
         for i, spike in enumerate(max_ch_waveforms):
-            a = spike/np.linalg.norm(spike)
+            a = spike / np.linalg.norm(spike)
             a = np.abs(a)
-            v = v_hat/np.linalg.norm(v_hat)
+            v = v_hat / np.linalg.norm(v_hat)
             v = np.abs(v)
             cross_corr[i] = np.correlate(a, v).mean()
 

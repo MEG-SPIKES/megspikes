@@ -35,7 +35,8 @@ def test_aspire_alphacsc_pipeline(simulation):
     }
     pipe = aspire_alphacsc_pipeline(
         simulation.case_manager, update_params=params,
-        rewrite_previous_results=True)
+        rewrite_previous_results=True,
+        manual_ica_components={'grad': (None, (0, 1,)), 'mag': ((0,), None)})
     dataset, raw = pipe.fit_transform(None)
     fname = f'test_report_detections.pdf'
     report_detections_path = simulation.case_manager.basic_folders[

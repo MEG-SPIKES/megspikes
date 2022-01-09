@@ -1,4 +1,5 @@
 import os
+from typing import Dict, Tuple
 
 import yaml
 from sklearn.pipeline import FeatureUnion, Pipeline
@@ -24,7 +25,9 @@ clusters_params = os.path.join(
 
 
 def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict,
-                             rewrite_previous_results: bool = False):
+                             rewrite_previous_results: bool = False,
+                             manual_ica_components: Dict[str, Tuple[
+                                 Tuple[int]]] = None):
     """Create ASPIRE AlphaCSC pipeline object.
 
     Parameters
@@ -35,12 +38,18 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict,
         Parameters to update
     rewrite_previous_results : bool
         Rewrite previous results
+    manual_ica_components : Dict[str: Tuple[Tuple[int]]], by default {
+            'grad': None, 'mag': None}
+        Manually ICA components per sensor type
 
     Returns
     -------
     sklearn.pipeline.Pipeline
         [description]
     """
+    if manual_ica_components is None:
+        manual_ica_components = {
+            'grad': None, 'mag': None}
     if (not rewrite_previous_results) & case.dataset.is_file():
         raise RuntimeError(
             'Results dataset exists and you try to overwrite it. If you want to'
@@ -65,6 +74,8 @@ def aspire_alphacsc_pipeline(case: CaseManager, update_params: dict,
                      LoadDataset(dataset=case.dataset, sensors=sens, run=run)),
                     ('select_ica_components',
                      ComponentsSelection(run=run,
+                                         manual_ica_components_selection=
+                                         manual_ica_components[sens],
                                          **params['ComponentsSelection'])),
                     ('detect_ica_peaks',
                      PeakDetection(**params['PeakDetection'])),
