@@ -76,7 +76,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         all runs in the analysis, by default 4
     n_components_if_nothing_else : int, optional
         select components by gof if no components selected
-    manual_ica_components_selection : Tuple[Tuple[int]], by default ((None))
+    manual_ica_components_selection : Tuple[Tuple[int]], by default None
         manually selected ICA components for each run listed in the order of
         runs starting from run 0. If manually selected ICA components are None,
         ICA components chosen by the standard procedure are used. For example,
@@ -84,6 +84,10 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         ((None), (0),(1)) means that ICA components 0 and 1 are manually
         selected for runs 1 and 2 respectively, and default (chosen by the
         algorithm) ICA components are assigned for runs 0 and 3.
+        NOTE, if components are manually selected only for the first run, the
+        second index of the tuple should be None or () to preserve
+        Tuple[Tuple[int]] structure. For instance,
+        manual_ica_components_selection=((0, 1, 2), None)
 
     References
     ----------
@@ -105,8 +109,8 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                  n_runs: int = 4,
                  n_components_if_nothing_else: int = 7,
                  run: int = 0,
-                 manual_ica_components_selection: Tuple[Tuple[int]] = (
-                         (None))) -> None:
+                 manual_ica_components_selection: Tuple[
+                     Tuple[int]] = None) -> None:
         self.n_by_var = n_by_var  # n components selected by variance
         self.gof = gof
         self.gof_abs = gof_abs
@@ -201,13 +205,23 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                 selected[np.argsort(gof)[::-1][:n_runs]] = 0
                 selected[np.argsort(gof)[::-1][n_runs]] = 1
 
+        # Manually update ICA components selection
+        if ((self.manual_ica_components_selection is not None) and  # if None
+                (len(self.manual_ica_components_selection) > 0) and  # if empty
+                (len(self.manual_ica_components_selection) > self.run)):
+            if ((self.manual_ica_components_selection[self.run] is not None) and
+                    (len(self.manual_ica_components_selection[self.run]) > 0)):
+                selected[:] = 0
+                selected[
+                    list(self.manual_ica_components_selection[self.run])] = 1
+
+        # Ensure that some components are selected
         if sum(selected) == 0:
             warnings.warn(
                 f"""Can't select ICA components, select first
                 {self.n_components_if_nothing_else} by GOF""")
             selected[np.argsort(gof)[::-1][
                      :self.n_components_if_nothing_else]] = 1
-
         return selected
 
 

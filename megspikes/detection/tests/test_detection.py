@@ -56,11 +56,11 @@ def test_ica_decomposition(aspire_alphacsc_random_dataset,
 @pytest.mark.happy
 @pytest.mark.parametrize("sensors", ["grad", "mag"])
 @pytest.mark.parametrize(  # FIXME: add more tests
-    "gof,kurtosis,sel_comp,run",
-    [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0),
-     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 1)])
+    "gof,kurtosis,sel_comp,run,manual_ica",
+    [([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 0, None),
+     ([72., 85., 94., 99.], [2, 0.5, 8, 0], [1, 0, 1, 0], 1, None)])
 def test_components_selection(aspire_alphacsc_random_dataset, sensors, gof,
-                              kurtosis, sel_comp, run):
+                              kurtosis, sel_comp, run, manual_ica):
     dataset = aspire_alphacsc_random_dataset
     dataset["ica_component_properties"].loc[
         dict(sensors=sensors, ica_component_property="gof")
@@ -69,11 +69,13 @@ def test_components_selection(aspire_alphacsc_random_dataset, sensors, gof,
         dict(sensors=sensors, ica_component_property="kurtosis")
         ] = np.array(kurtosis)
     run = 0
-    ds_channles, _ = select_sensors(dataset, sensors, run)
-    ds_channles['ica_component_selection'] *= 0
-    selection = ComponentsSelection(run=run)
-    (results, _) = selection.fit_transform((ds_channles, None))
-    assert sum(results['ica_component_selection'].values) == sum(sel_comp)
+    ds_channels, _ = select_sensors(dataset, sensors, run)
+    ds_channels['ica_component_selection'] *= 0
+    selection = ComponentsSelection(run=run,
+                                    manual_ica_components_selection=manual_ica)
+    (results, _) = selection.fit_transform((ds_channels, None))
+    if manual_ica is None:
+        assert sum(results['ica_component_selection'].values) == sum(sel_comp)
 
 
 @pytest.mark.parametrize("run,n_runs", [
@@ -87,6 +89,39 @@ def test_components_selection_detailed(run, n_runs, n_components):
     gof = np.random.uniform(low=0, high=100, size=(n_components,))
     sel = selection.select_ica_components(components, kurtosis, gof)
     assert sum(sel) > 0
+
+
+@pytest.mark.parametrize("run,n_runs,manual_ica", [
+    (0, 1, None),
+    (0, 1, ((0,), None)),
+    (0, 1, ((1,), None)),
+    (0, 1, ()),
+    (0, 1, ((0,), ())),
+    (0, 1, ((1,), ())),
+    (0, 1, ((1, 2, 3), ())),
+    (0, 2, ((), (1, 2, 3))),
+    (2, 4, ((), (), (), (1, 2, 3))),
+    (1, 2, (None, (1, 2, 3))),
+    (2, 4, (None, None, None, (1, 2, 3))),
+    (2, 3, (None, (1, 2, 3), None)),
+    (2, 3, (None, None, (1, 2, 3))),
+    (1, 4, (None, (0,)))])
+def test_manual_components_selection_detailed(run, n_runs, manual_ica):
+    n_components = 20
+    selection = ComponentsSelection(run=run, n_runs=n_runs,
+                                    manual_ica_components_selection=manual_ica)
+    components = np.random.sample((n_components, 102))
+    kurtosis = np.random.uniform(low=0, high=30, size=(n_components,))
+    gof = np.random.uniform(low=0, high=100, size=(n_components,))
+    sel = selection.select_ica_components(components, kurtosis, gof)
+    assert sum(sel) > 0
+
+    if manual_ica is not None and len(manual_ica) >= run + 1:
+        if manual_ica[run] is not None and len(manual_ica[run]) > 0:
+            true_sel = np.zeros_like(sel)
+            for i in manual_ica[run]:
+                true_sel[i] = 1
+            assert np.alltrue(sel == true_sel)
 
 
 @pytest.mark.happy
