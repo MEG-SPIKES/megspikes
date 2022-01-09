@@ -228,7 +228,7 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
     # TODO: check if spikes array is empty
     invalid_events_label = ''
     if len(spikes) == 0:
-        invalid_events_label = '\n(NOT: Eevents are invalid)'
+        invalid_events_label = '\n(NOTE: Eevents are invalid)'
         spikes = np.array([300, 700]) + raw.first_samp
 
     epochs = create_epochs(raw, spikes, -0.25, 0.25, sensors=sensors)
@@ -242,7 +242,8 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
     spikes_max_channel_times = np.linspace(
         -0.25, 0.25, n_samples_epoch)
     ax1.plot(spikes_max_channel_times, spikes_max_channel,
-             lw=0.3, c='k', alpha=0.5, label='Single events')
+             lw=0.3, c='k', alpha=0.5,
+             label=f'Single events {invalid_events_label}')
     ax1.plot(v_hat_times, v_hat,
              c='r', label='Atom')
 
@@ -256,9 +257,8 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
         else:
             i += 1
     ax1.legend(handles, labels, fontsize='xx-small')
-    ax1.set_title("Channel {} and atom {} waveform \n Goodness {}{}".format(
-        epochs.info['ch_names'][max_channel], atom, round(goodness, 2),
-        invalid_events_label))
+    ax1.set_title("Channel {} and atom {} waveform \n Goodness {}".format(
+        epochs.info['ch_names'][max_channel], atom, round(goodness, 2)))
 
     # Plot epochs image
     ax2 = plt.subplot(2, 2, 2)
