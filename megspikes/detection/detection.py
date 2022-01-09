@@ -84,10 +84,13 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         ((None), (0),(1)) means that ICA components 0 and 1 are manually
         selected for runs 1 and 2 respectively, and default (chosen by the
         algorithm) ICA components are assigned for runs 0 and 3.
-        NOTE, if components are manually selected only for the first run, the
+        NOTE: if components are manually selected only for the first run, the
         second index of the tuple should be None or () to preserve
         Tuple[Tuple[int]] structure. For instance,
         manual_ica_components_selection=((0, 1, 2), None)
+        NOTE: A comma in the parenthesis is required if one ICA component is
+        manually selected. For example,
+        manual_ica_components_selection=((1, ), None)
 
     References
     ----------
