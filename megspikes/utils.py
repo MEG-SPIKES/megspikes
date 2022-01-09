@@ -62,7 +62,7 @@ def prepare_data(data: mne.io.Raw,
         data.filter(filtering[0], filtering[1])
         data.notch_filter(filtering[2])
 
-    if alpha_notch:
+    if alpha_notch is not None:
         data.notch_filter(alpha_notch, trans_bandwidth=2.0)
 
     if resample:

@@ -224,6 +224,13 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
     spikes = np.where(detection_mask)[0]
     spikes = (spikes / ds.time.attrs['sfreq']) * sfreq
     spikes += raw.first_samp
+
+    # TODO: check if spikes array is empty
+    invalid_events_label = ''
+    if len(spikes) == 0:
+        invalid_events_label = '\n(NOTE: Eevents are invalid)'
+        spikes = np.array([300, 700]) + raw.first_samp
+
     epochs = create_epochs(raw, spikes, -0.25, 0.25, sensors=sensors)
     n_samples_epoch = len(epochs.times)
     evoked = epochs.average()
@@ -235,7 +242,8 @@ def plot_alphacsc_clusters(ds: xr.Dataset, raw: mne.io.Raw,
     spikes_max_channel_times = np.linspace(
         -0.25, 0.25, n_samples_epoch)
     ax1.plot(spikes_max_channel_times, spikes_max_channel,
-             lw=0.3, c='k', alpha=0.5, label='Single events')
+             lw=0.3, c='k', alpha=0.5,
+             label=f'Single events {invalid_events_label}')
     ax1.plot(v_hat_times, v_hat,
              c='r', label='Atom')
 
