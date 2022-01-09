@@ -63,7 +63,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
     n_by_var : int, optional
         N first components selected by variance, by default 10
     gof : float, optional
-        components dipole fitting threshold, by default 80.
+        components' dipole fitting threshold, by default 80.
     gof_abs : float, optional
         absolute dipole fitting threshold, by default 95.
     kurtosis_min : float, optional
@@ -76,6 +76,14 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         all runs in the analysis, by default 4
     n_components_if_nothing_else : int, optional
         select components by gof if no components selected
+    manual_ica_components_selection : Tuple[Tuple[int]], by default ((None))
+        manually selected ICA components for each run listed in the order of
+        runs starting from run 0. If manually selected ICA components are None,
+        ICA components chosen by the standard procedure are used. For example,
+        in the case of four runs, manual_ica_components_selection =
+        ((None), (0),(1)) means that ICA components 0 and 1 are manually
+        selected for runs 1 and 2 respectively, and default (chosen by the
+        algorithm) ICA components are assigned for runs 0 and 3.
 
     References
     ----------
@@ -96,7 +104,9 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
                  kurtosis_max: float = 10.,
                  n_runs: int = 4,
                  n_components_if_nothing_else: int = 7,
-                 run: int = 0) -> None:
+                 run: int = 0,
+                 manual_ica_components_selection: Tuple[Tuple[int]] = (
+                 (None))) -> None:
         self.n_by_var = n_by_var  # n components selected by variance
         self.gof = gof
         self.gof_abs = gof_abs
@@ -105,6 +115,7 @@ class ComponentsSelection(TransformerMixin, BaseEstimator):
         self.n_components_if_nothing_else = n_components_if_nothing_else
         self.run = run
         self.n_runs = n_runs
+        self.manual_ica_components_selection = manual_ica_components_selection
 
     def fit(self, X: Tuple[xr.Dataset, mne.io.Raw], y=None):
         return self
