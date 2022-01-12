@@ -1,6 +1,7 @@
 import logging
 import warnings
 from pathlib import Path
+import traceback
 from typing import Any, Dict, List, Tuple, Union
 
 import mne
@@ -753,9 +754,14 @@ def check_and_read_from_dataset(ds: xr.Dataset, da_name: str,
 
     if isinstance(selection, dict):
         data = ds[da_name].loc[selection].values.copy()
-        if np.max(data) == np.min(data):
+        try:
+            if np.max(data) == np.min(data):
+                warnings.warn(
+                    f"{da_name}.loc[{selection}] values are all the same")
+        except Exception:
             warnings.warn(
-                f"{da_name}.loc[{selection}] values are all the same")
+                f"{da_name}.loc[{selection}] is invalid")
+            print(traceback.format_exc())
     else:
         data = ds[da_name].values.copy()
         if np.max(data) == np.min(data):
