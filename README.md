@@ -110,7 +110,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github
 
 ## Contributing
 
-All contributors are expected to follow the [code of conduct](https://github.com/MEG-SPIKES/megspikes/raw/main/CONDUCT.md).
+All contributors are expected to follow the [code of conduct](https://github.com/MEG-SPIKES/megspikes/raw/main/CODE_OF_CONDUCT.md).
 
 ## References
 
