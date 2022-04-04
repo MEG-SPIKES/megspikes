@@ -1,5 +1,5 @@
 <p align="center">
-<img alt="MEG-SPIKES " src="megspikes/resources/logo.png" width="40%" height="auto"></p>
+<img alt="MEG-SPIKES " src="https://github.com/MEG-SPIKES/megspikes/raw/main/resources/logo.png" width="40%" height="auto"></p>
 
 [![Python package](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml/badge.svg)](https://github.com/MEG-SPIKES/megspikes/actions/workflows/python-package.yml)
 ![Codecov](https://img.shields.io/codecov/c/github/MEG-SPIKES/megspikes?token=JPN3YML3LY)
@@ -22,11 +22,11 @@ pip install .
 
 ## Examples
 
-Examples of how to use this package are prepared in the [Jupyter Notebooks](megspikes/examples/).
+Examples of how to use this package are prepared in the [Jupyter Notebooks](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/).
 
-- [0_simulation.ipynb](megspikes/examples/0_simulation.ipynb): simulation used to test this package and in other examples.
-- [1_manual_pipeline.ipynb](megspikes/examples/1_manual_pipeline.ipynb): localization of the irritative area for already detected (simulated) spikes.
-- [2_aspire_alphacsc_pipepline.ipynb](megspikes/examples/2_aspire_alphacsc_pipepline.ipynb): full spikes detection pipeline and visualization of each step.
+- [0_simulation.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/0_simulation.ipynb): simulation used to test this package and in other examples.
+- [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/1_manual_pipeline.ipynb): localization of the irritative area for already detected (simulated) spikes.
+- [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb): full spikes detection pipeline and visualization of each step.
 
 ## Documentation
 
@@ -34,9 +34,9 @@ Examples of how to use this package are prepared in the [Jupyter Notebooks](megs
 
 Full detection pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
 <p align="center">
-<img alt="ASPIRE AlphaCSC pipeline" src="megspikes/resources/aspire_alphacsc_pipeline.png"></p>
+<img alt="ASPIRE AlphaCSC pipeline" src="https://github.com/MEG-SPIKES/megspikes/raw/main/resources/aspire_alphacsc_pipeline.png"></p>
 
-To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](megspikes/examples/2_aspire_alphacsc_pipepline.ipynb).
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb).
 
 As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following main steps:
 
@@ -56,15 +56,15 @@ As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following
 
 Irritative zone prediction pipeline is presented on the figure below. The image was created using [Scikit-learn](https://scikit-learn.org) __Pipeline__ module.
 <p align="center">
-<img alt="ASPIRE AlphaCSC pipeline" src="megspikes/resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
+<img alt="ASPIRE AlphaCSC pipeline" src="https://github.com/MEG-SPIKES/megspikes/raw/main/resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
 
-To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](megspikes/examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](megspikes/examples/1_manual_pipeline.ipynb).
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/1_manual_pipeline.ipynb).
 
 ### Parameters
 
-[aspire_alphacsc_default_params.yml](megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
+[aspire_alphacsc_default_params.yml](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
 
-[clusters_default_params.yml](megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
+[clusters_default_params.yml](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
 
 ### Dependencies
 
@@ -103,7 +103,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](megspikes/exam
 
 ## Contributing
 
-All contributors are expected to follow the [code of conduct](CONDUCT.md).
+All contributors are expected to follow the [code of conduct](https://github.com/MEG-SPIKES/megspikes/raw/main/CONDUCT.md).
 
 ## References
 
