@@ -22,11 +22,11 @@ pip install .
 
 ## Examples
 
-Examples of how to use this package are prepared in the [Jupyter Notebooks](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/).
+Examples of how to use this package are prepared in the [Jupyter Notebooks](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/).
 
-- [0_simulation.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/0_simulation.ipynb): simulation used to test this package and in other examples.
-- [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/1_manual_pipeline.ipynb): localization of the irritative area for already detected (simulated) spikes.
-- [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb): full spikes detection pipeline and visualization of each step.
+- [0_simulation.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/0_simulation.ipynb): simulation used to test this package and in other examples.
+- [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/1_manual_pipeline.ipynb): localization of the irritative area for already detected (simulated) spikes.
+- [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb): full spikes detection pipeline and visualization of each step.
 
 ## Documentation
 
@@ -36,7 +36,7 @@ Full detection pipeline is presented on the figure below. The image was created 
 <p align="center">
 <img alt="ASPIRE AlphaCSC pipeline" src="https://github.com/MEG-SPIKES/megspikes/raw/main/resources/aspire_alphacsc_pipeline.png"></p>
 
-To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb).
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb).
 
 As is it depicted on the figure, ASPIRE-AlphaCSC pipeline includes the following main steps:
 
@@ -58,7 +58,7 @@ Irritative zone prediction pipeline is presented on the figure below. The image 
 <p align="center">
 <img alt="ASPIRE AlphaCSC pipeline" src="https://github.com/MEG-SPIKES/megspikes/raw/main/resources/clusters_localization_pipeline.png" width="300px" height="auto"></p>
 
-To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/examples/1_manual_pipeline.ipynb).
+To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/2_aspire_alphacsc_pipepline.ipynb) and [1_manual_pipeline.ipynb](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/examples/1_manual_pipeline.ipynb).
 
 ### Parameters
 
