@@ -10,16 +10,18 @@
 This repository contains functions for detecting, analyzing and evaluating epileptic spikes in MEG recording.
 
 ## Installation
+**Optionally** create a fresh virtual environment:
+```bash
+conda create -n megspikes pip python=3.7
+```
 
 The easiest way to install the package is using pip:
 ```bash
-conda create -n megspikes pip python=3.7
 pip install megspikes
 ```
 
 To install the latest version of the package, you should clone the repository and install all dependencies:
 ```bash
-conda create -n megspikes pip python=3.7
 git clone https://github.com/MEG-SPIKES/megspikes.git
 cd megspikes/
 pip install .
