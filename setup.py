@@ -12,7 +12,7 @@ URL = 'https://github.com/MEG-SPIKES/megspikes'
 AUTHOR = 'Valerii Chirkov'
 AUTHOR_EMAIL = 'valerii.chirkov@hu-berlin.de'
 PACKAGES = find_packages()
-VERSION = '0.1.4'
+VERSION = '0.1.5-dev0'
 CLASSIFIERS = ['Programming Language :: Python :: 3',
                'Intended Audience :: Science/Research',
                'Intended Audience :: Developers',
