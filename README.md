@@ -69,9 +69,9 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github
 
 ### Parameters
 
-[aspire_alphacsc_default_params.yml](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
+[aspire_alphacsc_default_params.yml](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/aspire_alphacsc_default_params.yml) includes all default parameters that were used to run spike detection using combination of ASPIRE [[2]](#2) and AlphaCSC [[1]](#1).
 
-[clusters_default_params.yml](https://github.com/MEG-SPIKES/megspikes/raw/main/megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
+[clusters_default_params.yml](https://github.com/MEG-SPIKES/megspikes/blob/main/megspikes/clusters_default_params.yml) describes all the parameters that were used for the irritative area prediction based on the detected events and their clustering.
 
 ### Dependencies
 
@@ -110,7 +110,7 @@ To reproduce this picture see [2_aspire_alphacsc_pipepline.ipynb](https://github
 
 ## Contributing
 
-All contributors are expected to follow the [code of conduct](https://github.com/MEG-SPIKES/megspikes/raw/main/CODE_OF_CONDUCT.md).
+All contributors are expected to follow the [code of conduct](https://github.com/MEG-SPIKES/megspikes/blob/main/CODE_OF_CONDUCT.md).
 
 ## References
 
