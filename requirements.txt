@@ -4,7 +4,7 @@ matplotlib==3.4.3
 mne==0.23.3
 netCDF4==1.5.7
 nibabel==3.2.1
-nilearn==0.8.0
+nilearn==0.9.0
 notebook==6.4.3
 numpy==1.21.5
 openpyxl==3.0.7
