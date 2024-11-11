@@ -119,3 +119,7 @@ La Tour, T. D., Moreau, T., Jas, M., & Gramfort, A. (2018). Multivariate Convolu
 
 <a id="2">[2]</a>
 Ossadtchi, A., Baillet, S., Mosher, J. C., Thyerlei, D., Sutherling, W., & Leahy, R. M. (2004). Automated interictal spike detection and source localization in magnetoencephalography using independent components analysis and spatio-temporal clustering. Clinical Neurophysiology, 115(3), 508–522. https://doi.org/10.1016/j.clinph.2003.10.036
+
+<a id="3">[3]</a>
+Chirkov, V., Kryuchkova, A., Koptelova, A., Stroganova, T., Kuznetsova, A., Kleeva, D., Ossadtchi, A., & Fedele, T. (2022). Data-driven approach for the delineation of the irritative zone in epilepsy in MEG. Plos One, 17(10), e0275063. https://doi.org/10.1371/journal.pone.0275063
+
